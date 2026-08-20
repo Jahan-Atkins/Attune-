@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attune — Find Your Practice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topnav">
+  <a class="wordmark" href="#" onclick="goHome(); return false;">Attune</a>
+  <div id="nav-actions">
+    <button class="nav-link" onclick="showAuth('login')" id="nav-login-btn">Log In</button>
+    <button class="nav-link" onclick="logout()" id="nav-logout-btn" style="display:none;">Log Out</button>
+  </div>
+</header>
+
+<main class="page">
+
+  <!-- ============ LANDING ============ -->
+  <section class="screen active" id="screen-landing">
+    <div class="hero">
+      <p class="hero-eyebrow">Yoga &amp; sound bath, matched to you</p>
+      <h1 class="hero-title">Find your <span class="hero-accent">practice.</span></h1>
+      <p class="hero-body">Tell us what you're looking for and we'll match you with a certified
+        instructor — no browsing profiles, no guesswork.</p>
+      <button class="btn btn-primary btn-lg" onclick="showAuth('signup')">Get Started</button>
+    </div>
+    <div class="how-it-works">
+      <div class="how-step">
+        <div class="how-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6Z"/></svg>
+        </div>
+        <h3>Choose your practice</h3>
+        <p>Yoga or sound bath — pick what you're in the mood for.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>
+        </div>
+        <h3>Pick a package</h3>
+        <p>A single session or a multi-session package at a better rate.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-4 3-6.5 7-6.5s7 2.5 7 6.5"/></svg>
+        </div>
+        <h3>Get matched</h3>
+        <p>We'll pair you with an available instructor in that specialty.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ AUTH ============ -->
+  <section class="screen" id="screen-auth">
+    <div class="card wizard-card">
+      <h2 class="card-title" id="auth-title">Log In</h2>
+      <p class="card-sub" id="auth-sub">Welcome back.</p>
+      <div id="auth-error" class="form-error" style="display:none;"></div>
+      <form id="auth-form" onsubmit="handleAuthSubmit(event)">
+        <div id="signup-name-field" style="display:none;">
+          <label class="field-label">Name</label>
+          <input class="field-input" type="text" id="auth-name" placeholder="Jordan Lee">
+        </div>
+        <label class="field-label">Email</label>
+        <input class="field-input" type="email" id="auth-email" required>
+        <label class="field-label">Password</label>
+        <input class="field-input" type="password" id="auth-password" required>
+        <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;" id="auth-submit-btn">Log In</button>
+      </form>
+      <button class="link-btn" onclick="toggleAuthMode()" id="auth-toggle-btn">New here? Create an account</button>
+    </div>
+  </section>
+
+  <!-- ============ SPECIALTY ============ -->
+  <section class="screen" id="screen-specialty">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goHome()">← Back</button>
+      <p class="step-label">Step 1 of 3</p>
+    </div>
+    <h2 class="step-title">What are you looking for?</h2>
+    <div class="option-grid">
+      <button class="option-card" onclick="selectSpecialty('yoga')">
+        <div class="option-icon option-icon-sage">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6Z"/></svg>
+        </div>
+        <h3>Yoga</h3>
+        <p>Breath-led movement, from gentle flow to vinyasa.</p>
+      </button>
+      <button class="option-card" onclick="selectSpecialty('sound_bath')">
+        <div class="option-icon option-icon-brass">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="15" r="6"/><path d="M6 15a6 3 0 0 0 12 0"/><path d="M9 5q3-2 6 0"/></svg>
+        </div>
+        <h3>Sound Bath</h3>
+        <p>Immersive relaxation with singing bowls and resonance.</p>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ BOOKING TYPE ============ -->
+  <section class="screen" id="screen-booking-type">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goToScreen('specialty')">← Back</button>
+      <p class="step-label">Step 2 of 3</p>
+    </div>
+    <h2 class="step-title">How would you like to book?</h2>
+    <div class="option-grid">
+      <button class="option-card" onclick="chooseBookingType('package')">
+        <div class="option-icon option-icon-sage">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>
+        </div>
+        <h3>Choose a Package</h3>
+        <p>A single session or multi-session package — we'll match you with a specialist whenever one's available.</p>
+      </button>
+      <button class="option-card" onclick="chooseBookingType('schedule')">
+        <div class="option-icon option-icon-brass">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01"/></svg>
+        </div>
+        <h3>Schedule a Lesson</h3>
+        <p>Pick a day and time window — we'll match you with the nearest available instructor for a 30-minute lesson.</p>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ PACKAGE ============ -->
+  <section class="screen" id="screen-package">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goToScreen('booking-type')">← Back</button>
+      <p class="step-label">Step 3 of 3</p>
+    </div>
+    <h2 class="step-title">Choose a package</h2>
+    <div id="package-list" class="package-list"></div>
+  </section>
+
+  <!-- ============ PAYMENT ============ -->
+  <section class="screen" id="screen-payment">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goToScreen('package')">← Back</button>
+      <p class="step-label">Final step</p>
+    </div>
+    <div class="card wizard-card">
+      <h2 class="card-title">Payment</h2>
+      <div class="mock-banner">This is a simulated payment for the demo — no real card is charged.</div>
+      <p class="card-sub" id="payment-summary"></p>
+      <div id="payment-error" class="form-error" style="display:none;"></div>
+      <form id="payment-form" onsubmit="submitPayment(event)">
+        <label class="field-label">Name on card</label>
+        <input class="field-input" id="pay-name" required placeholder="Jordan Lee">
+        <label class="field-label">Card number</label>
+        <input class="field-input" id="pay-number" required placeholder="4242 4242 4242 4242" inputmode="numeric">
+        <div class="field-row">
+          <div>
+            <label class="field-label">Expiry</label>
+            <input class="field-input" id="pay-expiry" required placeholder="MM/YY">
+          </div>
+          <div>
+            <label class="field-label">CVC</label>
+            <input class="field-input" id="pay-cvc" required placeholder="123" inputmode="numeric">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;" id="pay-submit-btn">Confirm &amp; Get Matched</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ SCHEDULE ============ -->
+  <section class="screen" id="screen-schedule">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goToScreen('booking-type')">← Back</button>
+      <p class="step-label">Step 3 of 3</p>
+    </div>
+    <h2 class="step-title">Pick a day, time, and location</h2>
+
+    <p class="field-label" style="text-align:center;">Day of week</p>
+    <div class="day-picker" id="schedule-day-picker"></div>
+
+    <p class="field-label" style="text-align:center;">Time window <span style="font-weight:400; text-transform:none; letter-spacing:0;">(we'll fit a 30-minute lesson somewhere inside it)</span></p>
+    <div class="window-grid" id="schedule-window-picker"></div>
+
+    <div class="schedule-panel">
+      <label class="field-label" style="margin-top:0;">Your city</label>
+      <select class="field-select" id="schedule-city"></select>
+      <div id="schedule-error" class="form-error" style="display:none; margin-top:12px;"></div>
+      <button class="btn btn-primary btn-block" style="margin-top:18px;" onclick="submitScheduleSelection()">Continue</button>
+    </div>
+  </section>
+
+  <!-- ============ SCHEDULE PAYMENT ============ -->
+  <section class="screen" id="screen-schedule-payment">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goToScreen('schedule')">← Back</button>
+      <p class="step-label">Final step</p>
+    </div>
+    <div class="card wizard-card">
+      <h2 class="card-title">Payment</h2>
+      <div class="mock-banner">This is a simulated payment for the demo — no real card is charged.</div>
+      <p class="card-sub" id="schedule-payment-summary"></p>
+      <div id="schedule-payment-error" class="form-error" style="display:none;"></div>
+      <form id="schedule-payment-form" onsubmit="submitSchedulePayment(event)">
+        <label class="field-label">Name on card</label>
+        <input class="field-input" id="spay-name" required placeholder="Jordan Lee">
+        <label class="field-label">Card number</label>
+        <input class="field-input" id="spay-number" required placeholder="4242 4242 4242 4242" inputmode="numeric">
+        <div class="field-row">
+          <div>
+            <label class="field-label">Expiry</label>
+            <input class="field-input" id="spay-expiry" required placeholder="MM/YY">
+          </div>
+          <div>
+            <label class="field-label">CVC</label>
+            <input class="field-input" id="spay-cvc" required placeholder="123" inputmode="numeric">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;" id="spay-submit-btn">Confirm &amp; Get Matched</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ MATCH ============ -->
+  <section class="screen" id="screen-match">
+    <div class="card wizard-card match-card">
+      <p class="match-eyebrow" id="match-eyebrow">You're matched!</p>
+      <div class="match-avatar" id="match-avatar">··</div>
+      <h2 class="match-name" id="match-name">—</h2>
+      <span class="specialty-badge" id="match-specialty-badge">—</span>
+      <p class="match-bio" id="match-bio"></p>
+      <p class="match-certs" id="match-certs"></p>
+      <div class="match-summary" id="match-summary"></div>
+      <div id="match-unmatched" class="form-error" style="display:none; margin-top:14px;"></div>
+      <button class="btn btn-outline btn-block" style="margin-top:18px;" id="match-cta-btn" onclick="goToScreen('specialty')">Book Again</button>
+    </div>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
