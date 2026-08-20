@@ -11,11 +11,12 @@ Client list). All of it is covered by a 41-test pytest suite.
 `.vscode/launch.json` has debug configs for both running the app and
 running the tests.
 
-Phase 2 (production database) is done. Phases 3–4 (deployment, polish)
-have not been started. Separately, `SCHEDULING-ROADMAP.md` covers a
-bigger feature — upgrading matching from specialty-only to specialty +
-time-window + nearest-instructor — which is now also done (see that
-file).
+Phase 2 (production database) is done, and Phase 3 (deploy) is live and
+verified — just missing the one item that needs a second real person.
+Phase 4 (polish) hasn't been started. Separately, `SCHEDULING-ROADMAP.md`
+covers a bigger feature — upgrading matching from specialty-only to
+specialty + time-window + nearest-instructor — which is now also done
+(see that file).
 
 Check items off as you go — nothing here needs to happen in one sitting.
 
@@ -81,21 +82,37 @@ SQLite's fine for development but its file won't survive most hosts' deploys.
 
 ---
 
-## Phase 3 — Deploy
+## Phase 3 — Deploy ✅ mostly done
 
-- [ ] Create a GitHub repo and push the project (`venv/` and `*.db` are already gitignored)
-- [ ] Create an account on your chosen host (Render or Railway are the simplest)
-- [ ] Create a new Web Service pointing at the repo, with `backend/` as the root directory
-- [ ] Set the build command: `pip install -r requirements.txt`
-- [ ] Confirm it picks up the start command from the included `Procfile` (or set it manually: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`)
-- [ ] Add environment variables on the host:
-  - [ ] `DATABASE_URL` — your Postgres string from Phase 2
-  - [ ] `SECRET_KEY` — generate a new long random string, don't reuse the dev default
-- [ ] Deploy, and watch the build/deploy logs for errors
-- [ ] Visit the live URL — confirm the login screen loads
-- [ ] Log in with the demo account on the live site
-- [ ] Create a client on the live site to confirm writes work in production
-- [ ] Have a friend sign up as a second instructor on the live URL and confirm they only see their own data
+- [x] Create a GitHub repo and push the project (`venv/` and `*.db` are
+      already gitignored) — https://github.com/Jahan-Atkins/Attune-
+- [x] Create an account on your chosen host — Render
+- [x] Create a new Web Service pointing at the repo, with `backend/` as
+      the root directory
+- [x] Set the build command: `pip install -r requirements.txt`
+- [x] Start command set explicitly: `uvicorn app.main:app --host 0.0.0.0
+      --port $PORT` (Procfile auto-detection was unreliable, so this was
+      typed directly into Render's Start Command field)
+- [x] Add environment variables on the host:
+  - [x] `DATABASE_URL` — ended up on a *second* Postgres instance
+        (Ohio region) after the first one (Oregon, from Phase 2) hit
+        persistent `SSL connection has been closed unexpectedly` errors
+        connecting from within Render. Migrated (`alembic stamp head` —
+        the app's own `create_all()` safety net had already built the
+        tables, so `upgrade` would have failed on "already exists") and
+        reseeded this one instead. **Phase 2's `backend/.env` now points
+        here too**, not the original Oregon DB.
+  - [x] `SECRET_KEY` — generated fresh, not the dev default
+- [x] Deploy — succeeded after the database swap above
+- [x] Visit the live URL — confirms the login screen loads:
+      https://attune-q29q.onrender.com
+- [x] Log in with the demo account on the live site
+- [x] Create a client on the live site to confirm writes work in
+      production (created "Prod Write Test", confirmed it persisted,
+      cleaned it back up)
+- [ ] Have a friend sign up as a second instructor on the live URL and
+      confirm they only see their own data — needs an actual second
+      person, can't be done solo
 
 ---
 
