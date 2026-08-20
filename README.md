@@ -6,6 +6,19 @@ serving **two** frontends — an instructor app (sessions, clients, profile,
 resource library) and a customer app (sign up, pick a specialty and
 package, pay, get matched with an instructor).
 
+## Live demo
+
+- **Instructor app:** https://attune-q29q.onrender.com — log in with
+  `demo@attune.app` / `password123` (or `kai@attune.app` / `priya@attune.app`,
+  same password)
+- **Customer app:** https://attune-q29q.onrender.com/customer — click
+  "Get Started" to sign up and get matched
+- **API docs:** https://attune-q29q.onrender.com/docs
+
+(The URLs later in this README under "Run it" are `localhost` ones for
+running the project on your own machine — they only work while you have
+the server running locally, not as links to a hosted copy.)
+
 ```
 attune-app/
 ├── backend/
