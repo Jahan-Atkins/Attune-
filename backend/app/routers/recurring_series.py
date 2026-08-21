@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..email import send_email
 from ..security import get_current_customer, get_current_instructor
 
 router = APIRouter(tags=["recurring-series"])
@@ -71,6 +72,26 @@ def ensure_upcoming_occurrences(db: Session, series: models.RecurringSeries, wee
         db.commit()
 
 
+def _notify_series(db: Session, series: models.RecurringSeries, event: str) -> None:
+    """created/paused/cancelled — the three events the roadmap calls out.
+    Not resumed: reactivating just picks back up where the still-existing
+    series left off, not really a "new" event worth a separate email."""
+    customer = db.query(models.Customer).filter(models.Customer.id == series.customer_id).first()
+    instructor = db.query(models.Instructor).filter(models.Instructor.id == series.instructor_id).first()
+    day_label = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][series.day_of_week]
+    detail = f"Every {day_label}, {series.start_time}–{series.end_time}"
+    send_email(
+        to=customer.email,
+        subject=f"Standing weekly booking {event}",
+        body=f"Your recurring booking ({detail}) with {instructor.name} was {event}.",
+    )
+    send_email(
+        to=instructor.email,
+        subject=f"Standing weekly booking {event}",
+        body=f"The recurring booking ({detail}) with {customer.name} was {event}.",
+    )
+
+
 @router.post("/api/customer/recurring-series", response_model=schemas.RecurringSeriesOut, status_code=201)
 def create_recurring_series(
     payload: schemas.RecurringSeriesCreate,
@@ -117,6 +138,7 @@ def create_recurring_series(
     db.refresh(series)
     ensure_upcoming_occurrences(db, series)
     db.refresh(series)
+    _notify_series(db, series, "created")
     return series
 
 
@@ -156,6 +178,7 @@ def pause_recurring_series(
     series.status = "paused"
     db.commit()
     db.refresh(series)
+    _notify_series(db, series, "paused")
     return series
 
 
@@ -189,6 +212,7 @@ def cancel_recurring_series(
     series.status = "cancelled"
     db.commit()
     db.refresh(series)
+    _notify_series(db, series, "cancelled")
     return series
 
 
@@ -229,4 +253,5 @@ def instructor_cancel_recurring_series(
     series.status = "cancelled"
     db.commit()
     db.refresh(series)
+    _notify_series(db, series, "cancelled")
     return series

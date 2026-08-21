@@ -50,6 +50,7 @@ function toggleAuthMode() {
   authMode = authMode === 'login' ? 'signup' : 'login';
   const isSignup = authMode === 'signup';
   document.getElementById('signup-name-field').style.display = isSignup ? 'block' : 'none';
+  document.getElementById('auth-email-note').style.display = isSignup ? 'inline' : 'none';
   document.getElementById('auth-name').required = isSignup;
   document.getElementById('auth-phone').required = isSignup;
   document.getElementById('login-sub').textContent = isSignup ? "Create your instructor account" : "Log in to your instructor account";

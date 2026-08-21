@@ -32,8 +32,8 @@ scale.
 4. **Rebook the same instructor** ✅ done — depends on #2, and its
    `preferred_instructor_id` mechanism is reused by #5
 5. **Recurring bookings** ✅ done — depends on #4's targeting mechanism
-6. **Notifications** — touches every feature above as a trigger point, so
-   building it last means one integration pass instead of five
+6. **Notifications** ✅ done — touches every feature above as a trigger
+   point, so building it last means one integration pass instead of five
 
 ---
 
@@ -343,7 +343,24 @@ already committed to the standing slot once.
 
 ---
 
-## Part 6 — Notifications
+## Part 6 — Notifications ✅ done
+
+Built as designed below, with one change: `send_email()` uses plain
+`print()`, not the `logging` module. A first pass used `logger.info()`,
+which passed every test (pytest's `caplog` overrides the level for the
+duration of a test) but was silently invisible in the actual running
+app — nothing in this project ever configures logging, so the root
+logger's default WARNING level dropped every notification before it
+reached a handler. Caught by manually checking the dev server's console
+after a real confirm, not by the test suite. `print()` sidesteps the
+whole question and is exactly as testable via pytest's `capsys`.
+Explicitly **not** built: the password-reset flow mentioned below as a
+"natural fit" — it was never part of what was asked for, and doing it
+now would mean new routes, token expiry, and frontend screens for a
+feature nobody requested. `send_email()` is ready for it whenever it's
+actually wanted. Covered by 7 new tests in `test_email.py`; verified for
+real by triggering a confirm against the running dev server and reading
+the printed EMAIL lines back out of its console.
 
 ### Infrastructure
 

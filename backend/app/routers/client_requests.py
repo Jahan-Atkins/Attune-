@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from .. import geo, models, schemas
 from ..database import get_db
+from ..email import send_email
 from ..matching import has_overlap, within_travel_distance
 from ..security import get_current_instructor
 
@@ -194,6 +195,23 @@ def _lesson_request_confirmed_out(instructor: models.Instructor, lesson_request:
     )
 
 
+def _notify_match(customer: models.Customer, instructor: models.Instructor) -> None:
+    """The main event Part 1's contact-info exchange exists for — each
+    side gets notified of the match and the other's contact info by
+    email, not just by whatever they happen to see next time they open
+    the app."""
+    send_email(
+        to=customer.email,
+        subject=f"You're matched with {instructor.name}",
+        body=f"{instructor.name} confirmed your request. Contact them directly: {instructor.email}, {instructor.phone}.",
+    )
+    send_email(
+        to=instructor.email,
+        subject=f"New client: {customer.name}",
+        body=f"You confirmed a request from {customer.name}. Contact them directly: {customer.email}, {customer.phone}.",
+    )
+
+
 @router.put("/bookings/{booking_id}/confirm", response_model=schemas.ClientRequestConfirmedOut)
 def confirm_booking(
     booking_id: int,
@@ -212,6 +230,7 @@ def confirm_booking(
     _create_client_from_booking(db, instructor, booking)
     db.commit()
     db.refresh(booking)
+    _notify_match(booking.customer, instructor)
     return _booking_confirmed_out(instructor, booking)
 
 
@@ -248,4 +267,5 @@ def confirm_lesson_request(
     _create_client_from_lesson_request(db, instructor, lesson_request)
     db.commit()
     db.refresh(lesson_request)
+    _notify_match(lesson_request.customer, instructor)
     return _lesson_request_confirmed_out(instructor, lesson_request)

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..email import send_email
 from ..security import get_current_customer, get_current_instructor
 
 router = APIRouter(tags=["reviews"])
@@ -86,6 +87,13 @@ def create_review(
     db.add(review)
     db.commit()
     db.refresh(review)
+
+    instructor = db.query(models.Instructor).filter(models.Instructor.id == instructor_id).first()
+    send_email(
+        to=instructor.email,
+        subject=f"New {review.rating}-star review from {customer.name}",
+        body=review.comment or "(no comment left)",
+    )
     return review
 
 
