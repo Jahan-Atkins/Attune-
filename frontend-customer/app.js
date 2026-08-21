@@ -35,7 +35,10 @@ const TIME_WINDOWS = [
 ];
 let selectedDay = null;
 let selectedWindow = null;
+let selectedDuration = null;
 let citiesCache = [];
+let durationCatalog = {};
+let lastRequestType = null; // 'package' | 'schedule' — which /me endpoint checkLatestStatus() re-polls
 
 function showAuth(mode) {
   authMode = mode;
@@ -182,12 +185,16 @@ async function loadPackages() {
   }
 }
 
-function selectPackage(pkg) {
+async function selectPackage(pkg) {
   selectedPackage = pkg;
   const info = packageCatalog[pkg];
   const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
   document.getElementById('payment-summary').textContent =
     `${specialtyLabel} · ${info.sessions} session${info.sessions > 1 ? 's' : ''} · $${info.price}`;
+
+  const cities = await loadCities();
+  document.getElementById('pay-city').innerHTML = cities.map(c => `<option value="${c}">${c}</option>`).join('');
+
   goToScreen('payment');
 }
 
@@ -197,11 +204,13 @@ async function submitPayment(evt) {
   errorEl.style.display = 'none';
   const submitBtn = document.getElementById('pay-submit-btn');
   submitBtn.disabled = true;
-  submitBtn.textContent = 'Processing…';
+  submitBtn.textContent = 'Sending…';
 
   const payload = {
     specialty: selectedSpecialty,
     package: selectedPackage,
+    city: document.getElementById('pay-city').value,
+    notes: document.getElementById('pay-notes').value.trim() || null,
     card_name: document.getElementById('pay-name').value.trim(),
     card_number: document.getElementById('pay-number').value.trim(),
     card_expiry: document.getElementById('pay-expiry').value.trim(),
@@ -210,14 +219,15 @@ async function submitPayment(evt) {
 
   try {
     const booking = await apiFetch('/api/customer/bookings', { method: 'POST', body: JSON.stringify(payload) });
+    lastRequestType = 'package';
     renderMatch(booking, true);
     goToScreen('match');
   } catch (err) {
-    errorEl.textContent = err.message || 'Payment failed.';
+    errorEl.textContent = err.message || 'Could not send request.';
     errorEl.style.display = 'block';
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = 'Confirm & Get Matched';
+    submitBtn.textContent = 'Send Request';
   }
 }
 
@@ -234,9 +244,26 @@ async function loadCities() {
   return citiesCache;
 }
 
+async function loadDurations() {
+  if (Object.keys(durationCatalog).length) return durationCatalog;
+  try {
+    durationCatalog = await apiFetch('/api/customer/lesson-requests/durations');
+  } catch (err) {
+    console.error('Failed to load durations:', err);
+  }
+  return durationCatalog;
+}
+
 async function initScheduleStep() {
   selectedDay = null;
   selectedWindow = null;
+  selectedDuration = null;
+
+  const durations = await loadDurations();
+  const durationEl = document.getElementById('schedule-duration-picker');
+  durationEl.innerHTML = Object.entries(durations).map(([minutes, price]) =>
+    `<button type="button" class="window-btn" data-duration="${minutes}" onclick="selectScheduleDuration(${minutes})">${minutes} min · $${price}</button>`
+  ).join('');
 
   const dayEl = document.getElementById('schedule-day-picker');
   dayEl.innerHTML = DAY_NAMES.map((name, i) =>
@@ -253,6 +280,11 @@ async function initScheduleStep() {
   cityEl.innerHTML = cities.map(c => `<option value="${c}">${c}</option>`).join('');
 }
 
+function selectScheduleDuration(minutes) {
+  selectedDuration = minutes;
+  document.querySelectorAll('#schedule-duration-picker .window-btn').forEach(b => b.classList.toggle('selected', Number(b.dataset.duration) === minutes));
+}
+
 function selectScheduleDay(day) {
   selectedDay = day;
   document.querySelectorAll('#schedule-day-picker .day-btn').forEach(b => b.classList.toggle('selected', Number(b.dataset.day) === day));
@@ -266,6 +298,11 @@ function selectScheduleWindow(index) {
 function submitScheduleSelection() {
   const errorEl = document.getElementById('schedule-error');
   errorEl.style.display = 'none';
+  if (!selectedDuration) {
+    errorEl.textContent = 'Pick a lesson length to continue.';
+    errorEl.style.display = 'block';
+    return;
+  }
   if (selectedDay === null || !selectedWindow) {
     errorEl.textContent = 'Pick a day and a time window to continue.';
     errorEl.style.display = 'block';
@@ -273,8 +310,9 @@ function submitScheduleSelection() {
   }
   const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
   const city = document.getElementById('schedule-city').value;
+  const price = durationCatalog[selectedDuration];
   document.getElementById('schedule-payment-summary').textContent =
-    `${specialtyLabel} · ${DAY_NAMES[selectedDay]}, ${selectedWindow.label} · ${city} · $65`;
+    `${specialtyLabel} · ${selectedDuration} min · ${DAY_NAMES[selectedDay]}, ${selectedWindow.label} · ${city} · $${price}`;
   goToScreen('schedule-payment');
 }
 
@@ -284,14 +322,16 @@ async function submitSchedulePayment(evt) {
   errorEl.style.display = 'none';
   const submitBtn = document.getElementById('spay-submit-btn');
   submitBtn.disabled = true;
-  submitBtn.textContent = 'Processing…';
+  submitBtn.textContent = 'Sending…';
 
   const payload = {
     specialty: selectedSpecialty,
     city: document.getElementById('schedule-city').value,
+    duration_minutes: selectedDuration,
     requested_day: selectedDay,
     requested_start_time: selectedWindow.start,
     requested_end_time: selectedWindow.end,
+    notes: document.getElementById('spay-notes').value.trim() || null,
     card_name: document.getElementById('spay-name').value.trim(),
     card_number: document.getElementById('spay-number').value.trim(),
     card_expiry: document.getElementById('spay-expiry').value.trim(),
@@ -300,14 +340,15 @@ async function submitSchedulePayment(evt) {
 
   try {
     const lessonRequest = await apiFetch('/api/customer/lesson-requests', { method: 'POST', body: JSON.stringify(payload) });
+    lastRequestType = 'schedule';
     renderMatch(lessonRequest, true);
     goToScreen('match');
   } catch (err) {
-    errorEl.textContent = err.message || 'Payment failed.';
+    errorEl.textContent = err.message || 'Could not send request.';
     errorEl.style.display = 'block';
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = 'Confirm & Get Matched';
+    submitBtn.textContent = 'Send Request';
   }
 }
 
@@ -315,37 +356,62 @@ async function submitSchedulePayment(evt) {
    MATCH DISPLAY
    Handles both result shapes: a package Booking and a scheduled
    LessonRequest — distinguished by the presence of `requested_day`,
-   a field only LessonRequestOut has.
+   a field only LessonRequestOut has. Also handles three statuses now
+   instead of two: "pending" (broadcast to instructors, awaiting
+   confirmation — nothing charged yet), "matched" (an instructor
+   confirmed and the card was charged), and "unmatched" (true dead end,
+   no active instructor could ever fulfill this).
    ========================================================= */
 function renderMatch(result, justBooked) {
   const isLessonRequest = 'requested_day' in result;
-  document.getElementById('match-eyebrow').textContent = justBooked ? "You're matched!" : 'Your match';
   const specialtyLabel = result.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
 
   const ctaBtn = document.getElementById('match-cta-btn');
   ctaBtn.textContent = isLessonRequest ? 'Schedule Another Lesson' : 'Book Another Package';
   ctaBtn.onclick = () => goToScreen('specialty');
 
+  const pendingEl = document.getElementById('match-pending');
+  const unmatchedEl = document.getElementById('match-unmatched');
+  const refreshBtn = document.getElementById('match-refresh-btn');
+  pendingEl.style.display = 'none';
+  unmatchedEl.style.display = 'none';
+  refreshBtn.style.display = result.status === 'pending' ? 'block' : 'none';
+
+  if (result.status === 'pending') {
+    document.getElementById('match-eyebrow').textContent = 'Request sent';
+    const summary = isLessonRequest
+      ? `${DAY_NAMES[result.requested_day]}, ${result.requested_start_time}–${result.requested_end_time} · ${result.duration_minutes} min · ${specialtyLabel} · $${result.amount_paid} due once confirmed`
+      : `${result.sessions_total} session${result.sessions_total > 1 ? 's' : ''} · ${specialtyLabel} · $${result.amount_paid} due once confirmed`;
+    document.getElementById('match-summary').textContent = summary;
+    document.getElementById('match-avatar').textContent = '···';
+    document.getElementById('match-name').textContent = 'Waiting for an instructor';
+    document.getElementById('match-specialty-badge').textContent = specialtyLabel;
+    document.getElementById('match-bio').textContent = '';
+    document.getElementById('match-certs').textContent = '';
+    pendingEl.textContent = "We've sent your request to nearby instructors who offer this — you'll be matched (and your card charged) as soon as one confirms. Check back any time.";
+    pendingEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('match-eyebrow').textContent = justBooked ? "You're matched!" : 'Your match';
   const summary = isLessonRequest
     ? `${DAY_NAMES[result.requested_day]}, ${result.matched_start_time || result.requested_start_time}–${result.matched_end_time || result.requested_end_time} · ${specialtyLabel} · $${result.amount_paid} paid`
     : `$${result.amount_paid} paid · ${result.sessions_total} session${result.sessions_total > 1 ? 's' : ''} · ${specialtyLabel}`;
   document.getElementById('match-summary').textContent = summary;
 
-  const unmatchedEl = document.getElementById('match-unmatched');
   unmatchedEl.textContent = isLessonRequest
-    ? "No instructor was free in that window — try a different day or time, or choose a package instead and we'll match you whenever one's available."
-    : "No active instructor currently offers this specialty — we'll match you as soon as one's available.";
+    ? "No instructor could fulfill that window — try a different day, time, or lesson length, or choose a package instead."
+    : "No active instructor currently offers this specialty — please check back later.";
 
   if (!result.instructor) {
     document.getElementById('match-avatar').textContent = '···';
-    document.getElementById('match-name').textContent = 'Matching soon';
+    document.getElementById('match-name').textContent = 'Not matched';
     document.getElementById('match-specialty-badge').textContent = specialtyLabel;
     document.getElementById('match-bio').textContent = '';
     document.getElementById('match-certs').textContent = '';
     unmatchedEl.style.display = 'block';
     return;
   }
-  unmatchedEl.style.display = 'none';
   const instructor = result.instructor;
   const initials = instructor.name.split(' ').filter(Boolean).map(w => w[0].toUpperCase()).slice(0, 2).join('');
   document.getElementById('match-avatar').textContent = initials;
@@ -355,6 +421,17 @@ function renderMatch(result, justBooked) {
   document.getElementById('match-certs').textContent = isLessonRequest && result.distance_km != null
     ? `${instructor.certifications} · ~${result.distance_km} km away`
     : instructor.certifications;
+}
+
+async function checkLatestStatus() {
+  if (!lastRequestType) return;
+  try {
+    const path = lastRequestType === 'schedule' ? '/api/customer/lesson-requests/me' : '/api/customer/bookings/me';
+    const result = await apiFetch(path);
+    renderMatch(result, false);
+  } catch (err) {
+    console.error('Failed to refresh status:', err);
+  }
 }
 
 /* =========================================================
@@ -367,6 +444,7 @@ async function routeLoggedInCustomer() {
   // simplification for a learning project rather than true "most recent".
   try {
     const lessonRequest = await apiFetch('/api/customer/lesson-requests/me');
+    lastRequestType = 'schedule';
     renderMatch(lessonRequest, false);
     goToScreen('match');
     return;
@@ -375,6 +453,7 @@ async function routeLoggedInCustomer() {
   }
   try {
     const booking = await apiFetch('/api/customer/bookings/me');
+    lastRequestType = 'package';
     renderMatch(booking, false);
     goToScreen('match');
   } catch (err) {

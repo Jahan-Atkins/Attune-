@@ -93,6 +93,11 @@ def set_instructor_city(client, headers, city):
     assert res.status_code == 200, res.text
 
 
+def set_instructor_max_distance(client, headers, km):
+    res = client.put("/api/profile", json={"max_travel_distance_km": km}, headers=headers)
+    assert res.status_code == 200, res.text
+
+
 def add_availability(client, headers, day_of_week, start_time, end_time):
     res = client.post("/api/availability", json={
         "day_of_week": day_of_week, "start_time": start_time, "end_time": end_time,

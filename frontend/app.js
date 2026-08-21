@@ -450,6 +450,110 @@ async function withdrawSession(id) {
 }
 
 /* =========================================================
+   CLIENT REQUESTS
+   Pending package/scheduled-lesson requests broadcast to every
+   instructor who matches (specialty, distance, and — for scheduled
+   requests — availability overlap). Nothing here is "yours" until you
+   confirm it: confirming is what charges the card and adds a real
+   Client row.
+   ========================================================= */
+let clientRequestsCache = [];
+
+function clientRequestCardHTML(r) {
+  const specialtyLabel = r.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const scheduleLine = r.request_type === 'schedule'
+    ? `${DAY_NAMES[r.requested_day]}, ${r.requested_start_time}–${r.requested_end_time} · ${r.duration_minutes} min lesson`
+    : `${r.package} package · ${r.sessions_total} session${r.sessions_total > 1 ? 's' : ''}`;
+  const locationLine = [r.customer_city, r.distance_km != null ? `~${r.distance_km} km away` : null].filter(Boolean).join(' · ');
+  const confirmPath = r.request_type === 'schedule' ? 'lesson-requests' : 'bookings';
+  return `
+    <div class="client-card">
+      <div class="client-row">
+        <div>
+          <p class="client-name">${escapeHtml(r.customer_name)}</p>
+          <p class="client-id">${escapeHtml(specialtyLabel)}</p>
+        </div>
+        <div><p class="next-value">$${r.amount_due}</p></div>
+      </div>
+      <p class="progress-text" style="margin-top:10px;">${escapeHtml(scheduleLine)}</p>
+      ${locationLine ? `<p class="progress-text">${escapeHtml(locationLine)}</p>` : ''}
+      ${r.notes ? `<p class="progress-text" style="font-style:italic; margin-top:6px;">“${escapeHtml(r.notes)}”</p>` : ''}
+      <div class="card-actions">
+        <button class="action-btn primary" onclick="confirmClientRequest('${confirmPath}', ${r.id})">Confirm Match</button>
+      </div>
+    </div>`;
+}
+
+async function loadClientRequests() {
+  const listEl = document.getElementById('client-requests-list');
+  const emptyEl = document.getElementById('client-requests-empty');
+  try {
+    clientRequestsCache = await apiFetch('/api/client-requests');
+    if (clientRequestsCache.length === 0) {
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+    } else {
+      listEl.innerHTML = clientRequestsCache.map(clientRequestCardHTML).join('');
+      emptyEl.style.display = 'none';
+    }
+  } catch (err) {
+    listEl.innerHTML = '';
+    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load client requests — is the backend running?";
+    emptyEl.style.display = 'block';
+    console.error('Failed to load client requests:', err);
+  }
+}
+
+async function confirmClientRequest(type, id) {
+  try {
+    await apiFetch(`/api/client-requests/${type}/${id}/confirm`, { method: 'PUT' });
+    await Promise.all([loadClientRequests(), loadClients('current'), loadClients('past'), loadSummary()]);
+  } catch (err) {
+    alert(err.message || 'Could not confirm this match — it may have just been claimed by another instructor.');
+    await loadClientRequests();
+  }
+}
+
+/* =========================================================
+   CLIENT REQUESTS MAP
+   Leaflet, loaded via CDN (see index.html <head>) — no build step
+   needed. Pins sit at each customer's demo-city coordinates.
+   ========================================================= */
+let clientRequestsMapInstance = null;
+
+function openClientRequestsMap() {
+  const body = `<div id="client-requests-map" style="height:360px; border-radius:16px; overflow:hidden;"></div>
+    <p class="empty-copy" style="margin-top:14px;">Pins show pending client requests currently visible to you — tap one for the pay and specialty.</p>`;
+  openModal('Client Requests Map', body);
+
+  const pins = clientRequestsCache.filter(r => r.customer_lat != null && r.customer_lng != null);
+
+  setTimeout(() => {
+    if (clientRequestsMapInstance) {
+      clientRequestsMapInstance.remove();
+      clientRequestsMapInstance = null;
+    }
+    const map = L.map('client-requests-map');
+    clientRequestsMapInstance = map;
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+
+    if (pins.length === 0) {
+      map.setView([39.8, -98.6], 4); // continental US, nothing to fit to
+      return;
+    }
+    const markers = pins.map(r => {
+      const specialtyLabel = r.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+      return L.marker([r.customer_lat, r.customer_lng])
+        .bindPopup(`<b>${escapeHtml(r.customer_name)}</b><br>${escapeHtml(specialtyLabel)} · $${r.amount_due}`);
+    });
+    const group = L.featureGroup(markers).addTo(map);
+    map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 10 });
+  }, 50); // modal DOM needs to exist (and be visible) before Leaflet can measure it
+}
+
+/* =========================================================
    PROFILE
    ========================================================= */
 let profileCache = null;
@@ -468,8 +572,22 @@ async function loadProfile() {
     const specialties = (p.specialty || '').split(',').map(s => s.trim()).filter(Boolean);
     document.getElementById('profile-specialty-badges').innerHTML = specialties
       .map(s => `<span class="specialty-pill">${labels[s] || s}</span>`).join('');
+
+    document.getElementById('max-distance-input').value = p.max_travel_distance_km != null ? p.max_travel_distance_km : '';
   } catch (err) {
     console.error('Failed to load profile:', err);
+  }
+}
+
+async function saveMaxDistance() {
+  const raw = document.getElementById('max-distance-input').value.trim();
+  const max_travel_distance_km = raw === '' ? null : Number(raw);
+  try {
+    await apiFetch('/api/profile', { method: 'PUT', body: JSON.stringify({ max_travel_distance_km }) });
+    if (profileCache) profileCache.max_travel_distance_km = max_travel_distance_km;
+    await loadClientRequests();
+  } catch (err) {
+    alert(err.message || 'Could not save travel distance.');
   }
 }
 
@@ -703,6 +821,7 @@ async function boot() {
     loadProfile(),
     loadFaqs('all'),
     loadAvailability(),
+    loadClientRequests(),
   ]);
 }
 

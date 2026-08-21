@@ -13,6 +13,8 @@ that satisfies what they asked for.
 """
 from typing import List, Optional, Tuple
 
+from . import geo
+
 # (day_of_week, start_time "HH:MM", end_time "HH:MM")
 AvailabilityTuple = Tuple[int, str, str]
 
@@ -57,3 +59,28 @@ def has_overlap(
             return _to_hhmm(matched_start_min), _to_hhmm(matched_end_min)
 
     return None
+
+
+def within_travel_distance(
+    instructor_max_km: Optional[float],
+    instructor_lat: Optional[float],
+    instructor_lng: Optional[float],
+    customer_lat: Optional[float],
+    customer_lng: Optional[float],
+) -> bool:
+    """
+    Whether a request should be visible to an instructor given their own
+    travel-distance preference. Missing data never hides a request — an
+    instructor with no preference set (`instructor_max_km is None`) sees
+    everything, and a request with no computable distance (either side
+    missing a location) is shown rather than silently dropped. The cap
+    only applies when every value needed to compute it is actually known.
+    """
+    if instructor_max_km is None:
+        return True
+    if instructor_lat is None or instructor_lng is None:
+        return True
+    if customer_lat is None or customer_lng is None:
+        return True
+    distance_km = geo.haversine_distance(instructor_lat, instructor_lng, customer_lat, customer_lng)
+    return distance_km <= instructor_max_km

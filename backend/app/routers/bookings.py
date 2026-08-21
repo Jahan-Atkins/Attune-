@@ -1,20 +1,20 @@
 """
-/api/customer/bookings — where a paid signup turns into a real match.
-
-The interesting logic is in create_booking() below: it (1) does a
-format-only mock "payment" check (no real payment gateway — see
-PACKAGE_PRICING and the card validation), (2) finds active instructors
-who offer the requested specialty, (3) picks the one with the fewest
-current matches (simple load balancing so bookings don't all pile onto
-one instructor), and (4) — the part that ties the two apps together —
-creates a real Client row for that instructor, so the new customer
-immediately shows up in the instructor's own "Current Clients" list.
+/api/customer/bookings — where a package selection becomes a pending
+request. This does NOT auto-match or charge anymore: create_booking()
+(1) does a format-only mock "card" check (no real payment gateway, and
+critically no actual charge — the card is only charged once an
+instructor confirms, see routers/client_requests.py), (2) resolves the
+customer's chosen city to lat/lng, and (3) sets status "pending" as long
+as at least one active instructor offers the specialty at all — the true
+"unmatched" dead end is reserved for when literally none do, since
+whether any *particular* instructor sees this request depends on their
+own travel-distance preference, evaluated dynamically when they browse
+(client_requests.py), not decided here.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Optional
 
-from .. import models, schemas
+from .. import geo, models, schemas
 from ..database import get_db
 from ..security import get_current_customer
 
@@ -38,9 +38,13 @@ def list_packages():
 
 def _mock_charge(card_number: str, card_expiry: str, card_cvc: str) -> None:
     """
-    Simulated payment — format checks only, no real payment gateway.
-    Raises HTTPException the same way a real gateway's rejection would,
-    so swapping this out for Stripe later doesn't change any caller code.
+    Simulated payment — format checks only, no real payment gateway, and
+    (as of the request/confirm flow) no actual charge either: this just
+    validates the card looks well-formed so the customer gets instant
+    feedback, the same way a real gateway's format validation would. The
+    real "charge" is nothing more than flipping `paid` to True once an
+    instructor confirms — there's no card data to re-run at that point,
+    which is why none is persisted here.
     """
     digits = card_number.replace(" ", "")
     if not digits.isdigit() or not (12 <= len(digits) <= 19):
@@ -51,23 +55,14 @@ def _mock_charge(card_number: str, card_expiry: str, card_cvc: str) -> None:
         raise HTTPException(status_code=400, detail="That security code doesn't look right.")
 
 
-def _find_match(db: Session, specialty: str) -> Optional[models.Instructor]:
-    candidates = (
+def _any_active_instructor_offers(db: Session, specialty: str) -> bool:
+    return (
         db.query(models.Instructor)
         .filter(models.Instructor.active.is_(True))
         .filter(models.Instructor.specialty.contains(specialty))
-        .all()
+        .first()
+        is not None
     )
-    if not candidates:
-        return None
-    # Load-balance: whoever currently has the fewest matched bookings gets the next one.
-    load = {
-        i.id: db.query(models.Booking)
-        .filter(models.Booking.instructor_id == i.id, models.Booking.status == "matched")
-        .count()
-        for i in candidates
-    }
-    return min(candidates, key=lambda i: load[i.id])
 
 
 @router.post("", response_model=schemas.BookingOut, status_code=201)
@@ -80,41 +75,32 @@ def create_booking(
         raise HTTPException(status_code=400, detail="Unknown specialty.")
     if payload.package not in PACKAGE_PRICING:
         raise HTTPException(status_code=400, detail="Unknown package.")
+    city = geo.CITY_BY_NAME.get(payload.city)
+    if not city:
+        raise HTTPException(status_code=400, detail="Unknown city.")
 
     _mock_charge(payload.card_number, payload.card_expiry, payload.card_cvc)
 
+    customer.latitude = city["lat"]
+    customer.longitude = city["lng"]
+
     pricing = PACKAGE_PRICING[payload.package]
-    matched_instructor = _find_match(db, payload.specialty)
+    has_any_candidate = _any_active_instructor_offers(db, payload.specialty)
 
     booking = models.Booking(
         customer_id=customer.id,
-        instructor_id=matched_instructor.id if matched_instructor else None,
+        instructor_id=None,
         specialty=payload.specialty,
         package=payload.package,
         sessions_total=pricing["sessions"],
         amount_paid=pricing["price"],
-        status="matched" if matched_instructor else "unmatched",
+        paid=False,
+        notes=payload.notes,
+        status="pending" if has_any_candidate else "unmatched",
     )
     db.add(booking)
     db.commit()
     db.refresh(booking)
-
-    if matched_instructor:
-        initials = "".join(word[0].upper() for word in customer.name.split()[:2]) or "CU"
-        db.add(models.Client(
-            instructor_id=matched_instructor.id,
-            name=customer.name,
-            initials=initials,
-            avatar_variant="c1",
-            status="current",
-            next_session=None,
-            sessions_completed=0,
-            sessions_total=pricing["sessions"],
-            amount_paid=pricing["price"],
-            amount_total=pricing["price"],
-        ))
-        db.commit()
-
     return booking
 
 

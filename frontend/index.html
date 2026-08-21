@@ -6,6 +6,10 @@
 <title>Attune — Instructor App</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<!-- Leaflet, for the Client Requests map view — loaded from a CDN so the
+     app still has no build step, per CLAUDE.md's frontend constraints. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -96,11 +100,19 @@
         </div>
       </div>
       <div class="subtabs">
-        <button class="subtab active" data-subtab="open" onclick="setSubtab('sessions','open')">Open Sessions</button>
+        <button class="subtab active" data-subtab="client-requests" onclick="setSubtab('sessions','client-requests')">Client Requests</button>
+        <button class="subtab" data-subtab="open" onclick="setSubtab('sessions','open')">Open Sessions</button>
         <button class="subtab" data-subtab="requested" onclick="setSubtab('sessions','requested')">Requested Sessions</button>
       </div>
 
-      <div class="subtab-panel active" data-panel="open">
+      <div class="subtab-panel active" data-panel="client-requests">
+        <div id="client-requests-list" class="content" style="padding-top:16px;"></div>
+        <div class="sessions-body" id="client-requests-empty">
+          <p class="empty-copy">No pending client requests right now. New package or scheduled-lesson requests that match your specialty, availability, and travel distance will show up here.</p>
+        </div>
+      </div>
+
+      <div class="subtab-panel" data-panel="open">
         <div class="content" style="padding-bottom:0;">
           <button class="pill pill-outline" onclick="openSessionForm()">+ Add Session</button>
         </div>
@@ -129,7 +141,7 @@
         </div>
       </div>
 
-      <div class="map-cta"><button class="pill pill-solid">MAP VIEW</button></div>
+      <div class="map-cta"><button class="pill pill-solid" onclick="openClientRequestsMap()">MAP VIEW</button></div>
     </section>
 
     <!-- ============ CLIENTS ============ -->
@@ -259,6 +271,17 @@
         <div style="width:22px;"></div>
       </div>
       <div class="content">
+        <p class="field-label" style="margin-top:0;">Maximum travel distance (km)</p>
+        <div class="field-row" style="align-items:flex-end;">
+          <div>
+            <input class="field-input" type="number" min="0" step="1" id="max-distance-input" placeholder="No limit">
+          </div>
+          <button class="pill pill-outline" onclick="saveMaxDistance()" style="flex:none;">Save</button>
+        </div>
+        <p class="empty-copy" style="margin:6px 0 22px; text-align:left; max-width:none; font-size:12.5px;">Leave blank for no limit. Client requests farther than this won't show up in your Client Requests queue.</p>
+
+        <div class="divider" style="margin:0 -20px 22px;"></div>
+
         <p class="empty-copy" style="margin:0 0 18px; text-align:left; max-width:none;">Set the weekly windows when you're bookable for a scheduled lesson. A customer's requested time can only match a window listed here.</p>
         <button class="pill pill-outline" onclick="openAvailabilityForm()">+ Add Availability</button>
         <div id="availability-list" style="margin-top:8px;"></div>

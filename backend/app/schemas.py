@@ -77,6 +77,7 @@ class ProfileOut(BaseModel):
     specialty: str
     active: bool
     city: Optional[str] = None
+    max_travel_distance_km: Optional[float] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -88,6 +89,7 @@ class ProfileUpdate(BaseModel):
     specialty: Optional[str] = None
     active: Optional[bool] = None
     city: Optional[str] = None  # one of geo.DEMO_CITIES' names; resolved to lat/lng server-side
+    max_travel_distance_km: Optional[float] = None  # null = no limit
 
 
 # ---- FAQ ----
@@ -128,6 +130,8 @@ class InstructorPublicOut(BaseModel):
 class BookingCreate(BaseModel):
     specialty: str  # "yoga" | "sound_bath"
     package: str    # "single" | "pack4" | "pack8"
+    city: str       # one of geo.DEMO_CITIES' names
+    notes: Optional[str] = None  # anything extra for the instructor to see
     card_name: str
     card_number: str
     card_expiry: str
@@ -140,6 +144,8 @@ class BookingOut(BaseModel):
     package: str
     sessions_total: int
     amount_paid: float
+    paid: bool
+    notes: Optional[str] = None
     status: str
     instructor: Optional[InstructorPublicOut] = None
     model_config = ConfigDict(from_attributes=True)
@@ -167,9 +173,11 @@ class AvailabilityBlockOut(AvailabilityBlockBase):
 class LessonRequestCreate(BaseModel):
     specialty: str  # "yoga" | "sound_bath"
     city: str  # one of geo.DEMO_CITIES' names
+    duration_minutes: int  # 30-90, 15-minute steps — see DURATION_PRICING
     requested_day: int  # 0=Monday ... 6=Sunday
     requested_start_time: str  # "HH:MM"
     requested_end_time: str  # "HH:MM"
+    notes: Optional[str] = None  # anything extra for the instructor to see
     card_name: str
     card_number: str
     card_expiry: str
@@ -181,6 +189,8 @@ class LessonRequestOut(BaseModel):
     specialty: str
     duration_minutes: int
     amount_paid: float
+    paid: bool
+    notes: Optional[str] = None
     requested_day: int
     requested_start_time: str
     requested_end_time: str
@@ -190,3 +200,30 @@ class LessonRequestOut(BaseModel):
     status: str
     instructor: Optional[InstructorPublicOut] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---- Client requests (instructor-facing pending-request queue) ----
+# Unifies a pending Booking and a pending LessonRequest into one shape so
+# the instructor's "Client Requests" screen can render both with a single
+# template. `request_type` tells the frontend (and the confirm endpoint)
+# which one it's looking at. Distance is computed fresh per instructor —
+# it's not a stored value, since it depends on *who's* looking.
+
+class ClientRequestOut(BaseModel):
+    id: int
+    request_type: str  # "package" | "schedule"
+    specialty: str
+    package: Optional[str] = None  # package requests only
+    sessions_total: int
+    duration_minutes: Optional[int] = None  # schedule requests only
+    amount_due: float
+    customer_name: str
+    customer_city: Optional[str] = None
+    customer_lat: Optional[float] = None
+    customer_lng: Optional[float] = None
+    distance_km: Optional[float] = None
+    requested_day: Optional[int] = None  # schedule requests only
+    requested_start_time: Optional[str] = None
+    requested_end_time: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: Optional[str] = None

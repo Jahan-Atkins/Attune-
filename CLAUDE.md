@@ -7,17 +7,22 @@ frontends from one process:
   instructors manage clients, session listings, their profile, and an
   FAQ library.
 - `frontend-customer/` (served at `/customer`) — the customer side:
-  sign up, choose a specialty and package, pay (simulated), and get
-  auto-matched with an instructor.
+  sign up, choose a package or a scheduled lesson, and send a request.
+  Nothing is charged and no instructor is assigned until one of them
+  confirms it (see `REQUEST-CONFIRM-ROADMAP.md`).
 
 Both are vanilla HTML/CSS/JS, no build step, no framework.
 
 Full history and rationale for design decisions lives in `README.md`.
-Two staged plans for what's not yet built:
-- `ROADMAP.md` — production readiness (Postgres, deployment, polish)
-- `SCHEDULING-ROADMAP.md` — the next big feature: time-window + nearest-
-  instructor matching for a single scheduled lesson, replacing today's
-  specialty-only matching for that flow
+Staged plans for what's not yet built, or records of what was:
+- `ROADMAP.md` — production readiness (Postgres, deployment, polish) —
+  Phases 0–3 done, Phase 4 (polish) not started
+- `SCHEDULING-ROADMAP.md` — done. Time-window + nearest-instructor
+  matching for scheduled lessons.
+- `REQUEST-CONFIRM-ROADMAP.md` — done. The pending -> broadcast ->
+  instructor-confirms model both booking flows use now, instructor
+  travel-distance preference, variable lesson duration, and the Client
+  Requests map.
 
 Check the relevant one before assuming a feature doesn't exist yet.
 
@@ -52,11 +57,33 @@ Check the relevant one before assuming a feature doesn't exist yet.
   apply here. The two apps use *different* localStorage keys
   (`attune_token` vs `attune_customer_token`) on purpose, since both run
   under the same origin and would otherwise clobber each other's session.
-- When a customer's booking gets matched, `bookings.py` also creates a
-  real `Client` row for that instructor. That's intentional — it's what
-  makes the new customer show up in the instructor's own "Current
-  Clients" list instead of the two apps feeling disconnected. Don't
-  "simplify" this away.
+- When an instructor confirms a pending `Booking`/`LessonRequest`,
+  `client_requests.py`'s confirm routes also create a real `Client` row
+  for that instructor. That's intentional — it's what makes the new
+  customer show up in the instructor's own "Current Clients" list
+  instead of the two apps feeling disconnected. Don't "simplify" this
+  away. (This used to happen at request-creation time, under the old
+  auto-match model — it moved here when that model changed. If you're
+  reading old code/docs that say `bookings.py` does this, that's stale.)
+- **Nothing is charged and no `Client` row exists until an instructor
+  confirms.** `Booking`/`LessonRequest` start `status="pending"` with
+  `instructor_id=None` and `paid=False`. The confirm routes in
+  `client_requests.py` are the *only* place either of those flips —
+  don't add matching/assignment logic to the customer-facing create
+  routes in `bookings.py`/`lesson_requests.py` again.
+- The confirm routes re-check specialty/distance/(overlap) eligibility
+  server-side before letting an instructor confirm — never trust that
+  whatever a `GET /api/client-requests` response rendered client-side is
+  still an accurate or authorized view by the time a confirm request
+  arrives. Same reasoning as the instructor-scoping rule above: don't
+  let a client's belief about what it's allowed to do stand in for a
+  server-side check.
+- No card details are ever persisted, in either flow. `_mock_charge()` in
+  `bookings.py` validates format only and returns; nothing about the
+  card is written to the database. "Charging" at confirm time is just
+  `paid = True`. Don't add card storage to make a future feature easier
+  — there's no real gateway behind this, so there's nothing legitimate
+  to store it for.
 
 ## Commands
 
@@ -67,7 +94,7 @@ pip install -r requirements.txt
 alembic upgrade head
 python seed.py           # see logins below
 uvicorn app.main:app --reload
-pytest                    # 75 tests in backend/tests/ — run after any route change
+pytest                    # 94 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -79,8 +106,10 @@ Seeded logins (all password `password123`):
 - `kai@attune.app` — Kai Bennett — sound bath only
 - `priya@attune.app` — Priya Anand — yoga only
 
-(Three different specialty combos on purpose, so matching has real
-variety to demonstrate — see `backend/app/routers/bookings.py`.)
+(Three different specialty combos, cities, and availability windows on
+purpose — Priya also has a 500km travel-distance cap, the other two
+don't — so the Client Requests broadcast/filtering has real variety to
+demonstrate. See `backend/seed.py`.)
 
 VS Code users: `.vscode/launch.json` has debug configs for both running
 the server and running the test suite (Run and Debug panel → pick from
@@ -103,26 +132,36 @@ the dropdown).
   path. `app/main.py` has an explicit `@app.get("/customer")` redirect to
   `/customer/` for exactly this reason — if you add a third frontend later,
   it'll need the same treatment or the bare URL will 404.
-- Matching in `bookings.py` (the package flow) filters by `specialty` (a
-  comma-separated string column — `.contains()`, not an exact match) and
-  `active`, then load-balances by current match count. It does **not**
-  consider time or location — that's `lesson_requests.py`'s job (the
-  scheduled-lesson flow), which additionally requires a
-  `has_overlap()` match (`app/matching.py`) and sorts by
-  `haversine_distance()` (`app/geo.py`). The two flows are intentionally
-  separate matching functions, not a shared one with a time param bolted
-  on — see `LessonRequest`'s docstring in `models.py` for why.
+- `bookings.py`/`lesson_requests.py` don't match anyone to anything
+  anymore — they only validate the request and mark it `"pending"` (or
+  the dead-end `"unmatched"` if literally no active instructor could
+  ever take it). All the actual matching — specialty (`.contains()` on
+  a comma-separated column), the instructor's own `active` flag and
+  `max_travel_distance_km`, and for scheduled lessons a real
+  `has_overlap()` check (`app/matching.py`) — lives in
+  `client_requests.py`, computed fresh on every `GET`, never
+  snapshotted. See `REQUEST-CONFIRM-ROADMAP.md` for the full shape.
+- A local dev server (`uvicorn`) caches OS-level filesystem permissions
+  for its process lifetime. If macOS revokes and you re-grant Downloads-
+  folder access mid-session, any `uvicorn` process already running will
+  keep throwing `PermissionError` on static file reads until you restart
+  it — the restored permission doesn't apply to an already-running
+  process. Restart the server before assuming a code change broke
+  something.
 
 ## Current status
 
-**Done:** instructor auth/CRUD/profile/FAQs (Phase 0–1 in `ROADMAP.md`),
-the full customer app — signup, specialty + package selection, mock
-payment, and specialty-based auto-matching with load balancing — and now
-the full scheduling feature from `SCHEDULING-ROADMAP.md`: instructor
-weekly availability, a fake demo-city location system, and a second
-customer request type (`LessonRequest`, alongside the original package
-`Booking` flow) that matches on specialty + time-window overlap +
-nearest distance, with the same Client-row sync into the matched
-instructor's app. 75 passing tests cover all of it.
+**Done:** instructor auth/CRUD/profile/FAQs, the full customer app (two
+request types — packages and scheduled lessons — both going through a
+pending -> broadcast -> instructor-confirms model, not auto-matching),
+instructor weekly availability + a travel-distance preference, a fake
+demo-city location system, variable lesson duration with tiered
+pricing, a Client Requests map (Leaflet via CDN), and Postgres +
+deployment (Render, live). 94 passing tests cover all of it. See
+`SCHEDULING-ROADMAP.md` and `REQUEST-CONFIRM-ROADMAP.md` for how the
+matching model got to its current shape, and `ROADMAP.md` for the
+deploy history.
 
-**Not started:** Postgres/deployment/polish (`ROADMAP.md` Phases 2–4).
+**Not started:** `ROADMAP.md` Phase 4 (polish — CORS origin lock-down,
+loading states, favicon, mobile testing) and one manual verification
+step (a second real person signing up to confirm data isolation live).

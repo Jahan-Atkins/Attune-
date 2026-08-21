@@ -3,8 +3,8 @@
 A gig-work marketplace concept for yoga & sound bath instructors, built as a
 learning project: one FastAPI backend with real auth and a database,
 serving **two** frontends — an instructor app (sessions, clients, profile,
-resource library) and a customer app (sign up, pick a specialty and
-package, pay, get matched with an instructor).
+resource library) and a customer app (sign up, request a package or a
+scheduled lesson, and get matched once an instructor confirms).
 
 ## Live demo
 
@@ -12,7 +12,8 @@ package, pay, get matched with an instructor).
   `demo@attune.app` / `password123` (or `kai@attune.app` / `priya@attune.app`,
   same password)
 - **Customer app:** https://attune-q29q.onrender.com/customer — click
-  "Get Started" to sign up and get matched
+  "Get Started" to sign up and send a request (see "How the pieces
+  connect" below for why that isn't instant)
 - **API docs:** https://attune-q29q.onrender.com/docs
 
 (The URLs later in this README under "Run it" are `localhost` ones for
@@ -24,37 +25,43 @@ attune-app/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py          # FastAPI app: routers + both frontends, one process
-│   │   ├── database.py      # SQLAlchemy engine/session setup (SQLite)
-│   │   ├── models.py        # Instructor, Client, SessionListing, FAQ, Customer, Booking
+│   │   ├── database.py      # SQLAlchemy engine/session setup (SQLite locally, Postgres in prod)
+│   │   ├── models.py        # Instructor, Client, SessionListing, FAQ, Customer, Booking, LessonRequest, AvailabilityBlock
 │   │   ├── schemas.py       # Pydantic request/response shapes
 │   │   ├── security.py      # Password hashing, JWTs, get_current_instructor / get_current_customer
+│   │   ├── geo.py           # demo city list + haversine distance
+│   │   ├── matching.py      # pure functions: time-overlap check, travel-distance check
 │   │   └── routers/
-│   │       ├── auth.py           # /api/auth — instructor signup, login, me
-│   │       ├── clients.py        # /api/clients — full CRUD, scoped to the logged-in instructor
-│   │       ├── sessions.py       # /api/sessions — CRUD + request/withdraw
-│   │       ├── profile.py        # /api/profile — get/update your own profile (incl. specialty)
-│   │       ├── faqs.py           # /api/faqs — Learn screen content
-│   │       ├── customer_auth.py  # /api/customer/auth — customer signup, login, me
-│   │       └── bookings.py       # /api/customer/bookings — packages, mock payment, matching
+│   │       ├── auth.py             # /api/auth — instructor signup, login, me
+│   │       ├── clients.py          # /api/clients — full CRUD, scoped to the logged-in instructor
+│   │       ├── sessions.py         # /api/sessions — CRUD + request/withdraw (gig listings, unrelated to customer matching)
+│   │       ├── profile.py          # /api/profile — get/update your own profile (specialty, city, travel distance)
+│   │       ├── availability.py     # /api/availability — instructor's weekly bookable windows
+│   │       ├── faqs.py             # /api/faqs — Learn screen content
+│   │       ├── customer_auth.py    # /api/customer/auth — customer signup, login, me
+│   │       ├── bookings.py         # /api/customer/bookings — package requests (pending, not matched)
+│   │       ├── lesson_requests.py  # /api/customer/lesson-requests — scheduled-lesson requests (pending, not matched)
+│   │       └── client_requests.py  # /api/client-requests — instructor-facing: browse + confirm pending requests
 │   ├── alembic/              # Database migrations (see Phase 2 below)
-│   ├── tests/                # pytest suite — 41 tests: auth, CRUD, isolation, matching
+│   ├── tests/                # pytest suite — 94 tests: auth, CRUD, isolation, scheduling, request/confirm flow
 │   ├── pytest.ini
-│   ├── seed.py                # Demo data + 3 instructor logins with different specialties
+│   ├── seed.py                # Demo data + 3 instructor logins with different specialties/cities/availability
 │   ├── requirements.txt
 │   ├── .env.example
 │   └── Procfile               # for deployment
 ├── frontend/                  # instructor app — served at /
-│   ├── index.html             # login screen, reusable modal, 5-tab nav
+│   ├── index.html             # login screen, reusable modal, 6-tab nav, Leaflet map (CDN)
 │   ├── style.css
 │   └── app.js                 # auth, fetch() calls, all CRUD form logic
 ├── frontend-customer/         # customer app — served at /customer
-│   ├── index.html             # landing → auth → specialty → package → payment → match
+│   ├── index.html             # landing → auth → specialty → package-or-schedule → request sent
 │   ├── style.css
 │   └── app.js
 ├── .vscode/launch.json        # debug configs for the server and the test suite
 ├── CLAUDE.md                  # project brief Claude Code reads automatically
 ├── ROADMAP.md                 # production-readiness checklist (Postgres, deploy, polish)
-├── SCHEDULING-ROADMAP.md       # next feature: time-window + nearest-instructor matching
+├── SCHEDULING-ROADMAP.md       # done — time-window + nearest-instructor matching for scheduled lessons
+├── REQUEST-CONFIRM-ROADMAP.md  # done — pending/broadcast/confirm model, travel distance, variable duration, map
 └── README.md
 ```
 
@@ -104,9 +111,12 @@ uvicorn app.main:app --reload
 - **Instructor app:** http://127.0.0.1:8000 — log in with any of the three
   accounts above.
 - **Customer app:** http://127.0.0.1:8000/customer — click "Get Started" to
-  sign up as a new customer, pick a specialty and package, and get matched.
-  Watch the matched instructor's Clients list in the instructor app — the
-  new customer shows up there too (see "How the pieces connect" below).
+  sign up, then choose a package or schedule a specific lesson. Either way
+  this sends a *request*, not an instant match — nothing is charged yet.
+  Log in as one of the instructor accounts above, go to Sessions → Client
+  Requests, and confirm it. Only then does the card "charge" and the
+  customer show up in that instructor's Clients list (see "How the pieces
+  connect" below).
 
 Also open **http://127.0.0.1:8000/docs** for FastAPI's interactive API
 explorer. There are two separate "Authorize" flows there now — one for
@@ -126,11 +136,15 @@ requires the matching token type — a customer's token is cryptographically
 rejected on instructor routes and vice versa, not just conventionally kept
 apart.
 
-The two apps are more than visually related: when a customer's booking
-gets matched (`app/routers/bookings.py`), the backend also creates a real
-`Client` row for that instructor — so the new customer immediately shows
-up in the matched instructor's own "Current Clients" list. One booking,
-one write to each side, no separate sync step.
+The two apps are more than visually related: a customer's package or
+scheduled-lesson request starts out `"pending"`, visible to every
+instructor it matches on specialty (and, for scheduled lessons, an
+actual time overlap) within their own travel-distance preference — see
+`app/routers/client_requests.py`. Nothing is assigned or charged until
+an instructor confirms it; confirming is what creates a real `Client`
+row for that instructor, so the new customer immediately shows up in
+their "Current Clients" list. Full rationale in
+`REQUEST-CONFIRM-ROADMAP.md`.
 
 ## Migrations (Alembic)
 
@@ -150,14 +164,16 @@ it — autogenerate is good but not perfect, especially with column renames.
 
 ## Testing
 
-There's a real pytest suite in `backend/tests/` — 41 tests covering
+There's a real pytest suite in `backend/tests/` — 94 tests covering
 instructor auth, full CRUD on clients and sessions, the request/withdraw
 flow, profile updates, FAQ filtering, customer auth, package pricing, the
-mock-payment format checks, specialty-based matching (including that it
-never matches the wrong specialty, skips inactive instructors, and load-
-balances across ties), and — importantly — that one instructor genuinely
-can't see another instructor's data, and that instructor/customer tokens
-can't be used on each other's routes.
+mock-payment format checks, instructor availability, geo/distance math,
+scheduling overlap logic, and the pending -> broadcast -> confirm flow
+itself (visibility filtering by specialty/distance/time-overlap, confirm
+success, an already-claimed race, a wrong-instructor confirm attempt) —
+plus, importantly, that one instructor genuinely can't see another
+instructor's data, and that instructor/customer tokens can't be used on
+each other's routes.
 
 ```bash
 cd backend
@@ -180,21 +196,28 @@ and it'll catch it immediately if a change breaks something that used to work.
 Full create/edit/delete for clients and sessions from the instructor UI
 (not just the API) — try **+ Add Client** and **+ Add Session**. Sessions
 have a request/withdraw flow. Instructor profile is editable, including
-specialty (which the matching engine actually reads), and Active Profile
-persists. The customer app's full flow works end to end: sign up, pick a
-specialty and package, "pay" (simulated), get matched with a real
-instructor, and that match creates a real Client row on the instructor's
-side. A 41-test suite covers all of it.
+specialty, city, and a travel-distance preference (all of which the
+Client Requests broadcast actually reads), and Active Profile persists.
+Session Preferences also manages weekly availability blocks. The
+customer app's full flow works end to end for both request types —
+package or scheduled lesson, including lesson length and a notes field —
+and an instructor confirming one from their Client Requests queue (map
+view included) is what charges the mock card and creates a real Client
+row. A 94-test suite covers all of it.
 
 **Good next steps, roughly in order of difficulty:**
 1. Wire up "Contact us" on the instructor Learn screen to actually send a
    message somewhere.
 2. Add password reset (forgot-password email flow) for both account types.
-3. Build the schedule + nearest-instructor matching upgrade — see
-   `SCHEDULING-ROADMAP.md` for the full, granular plan.
-4. Replace SQLite with Postgres for production (see below).
-5. Add pagination once client/session/customer lists get long.
-6. Swap the mock payment for real Stripe test-mode integration.
+3. Add an explicit "decline" action for an instructor on a Client Request
+   they don't want to see again (today they just don't confirm it, and it
+   stays visible to everyone else — see `REQUEST-CONFIRM-ROADMAP.md`).
+4. Add pagination once client/session/customer lists get long.
+5. Swap the mock payment for real Stripe test-mode integration (the
+   pending/confirm split was actually designed with this in mind — a real
+   gateway's authorize-then-capture maps naturally onto it).
+6. `ROADMAP.md` Phase 4 — CORS origin lock-down, loading states, favicon,
+   mobile testing pass.
 
 ## Deploying it
 
@@ -208,9 +231,13 @@ doesn't survive redeploys on most hosts. The common path:
    already reads that variable, so no code changes needed. Also set a real
    `SECRET_KEY` environment variable (see `.env.example`) — don't reuse the
    development default.
-3. Deploy `backend/` as a web service. A `Procfile` is already included
-   (`web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`), which Render,
-   Railway, and Heroku-style platforms pick up automatically.
+3. Deploy `backend/` as a web service (root directory `backend/`, build
+   command `pip install -r requirements.txt`). A `Procfile` is included
+   (`web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`) that
+   Heroku-style platforms are supposed to pick up automatically — in
+   practice, Render's autodetection was unreliable, so just paste that
+   same command into the host's "Start Command" field directly rather
+   than counting on it.
 4. Run `alembic upgrade head` once against the production database (most
    hosts let you run a one-off command, or you can point your local
    `DATABASE_URL` at it temporarily and run it from your machine).

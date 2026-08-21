@@ -36,6 +36,7 @@ class Instructor(Base):
     active = Column(Boolean, default=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+    max_travel_distance_km = Column(Float, nullable=True)  # null = no limit
 
     clients = relationship("Client", back_populates="instructor", cascade="all, delete-orphan")
     requested_sessions = relationship("SessionListing", back_populates="requested_by")
@@ -112,12 +113,24 @@ class Customer(Base):
     bookings = relationship("Booking", back_populates="customer", cascade="all, delete-orphan")
     lesson_requests = relationship("LessonRequest", back_populates="customer", cascade="all, delete-orphan")
 
+    @property
+    def city(self):
+        """Display name for latitude/longitude — shown to instructors
+        reviewing a pending request. See geo.py."""
+        return geo.city_name_for_coords(self.latitude, self.longitude)
+
 
 class Booking(Base):
     """
-    One signup+payment+match event. `instructor_id` is null only in the
-    rare case no active instructor offers the requested specialty at
-    all — everything else results in an immediate match.
+    One signup+package-selection event. This is a *request*, not an
+    instant match: it starts "pending" and is broadcast (dynamically —
+    see routers/bookings.py's candidate query, nothing is snapshotted
+    here) to every active instructor offering the specialty within their
+    own travel-distance preference. `instructor_id` stays null and the
+    card is never charged (`paid` stays False) until one of those
+    instructors confirms it — see the `/confirm` route. `status` becomes
+    "unmatched" immediately, with no broadcast, only in the true dead-end
+    case: no active instructor anywhere offers the specialty at all.
     """
     __tablename__ = "bookings"
 
@@ -128,8 +141,10 @@ class Booking(Base):
     specialty = Column(String, nullable=False)  # "yoga" | "sound_bath"
     package = Column(String, nullable=False)  # "single" | "pack4" | "pack8"
     sessions_total = Column(Integer, nullable=False)
-    amount_paid = Column(Float, nullable=False)
-    status = Column(String, default="matched")  # "matched" | "unmatched"
+    amount_paid = Column(Float, nullable=False)  # the price the customer will owe, not necessarily charged yet — see `paid`
+    paid = Column(Boolean, default=False)  # flips True only when an instructor confirms
+    notes = Column(Text, nullable=True)  # anything extra the customer wants the instructor to see
+    status = Column(String, default="pending")  # "pending" | "matched" | "unmatched"
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     customer = relationship("Customer", back_populates="bookings")
@@ -161,17 +176,18 @@ class AvailabilityBlock(Base):
 
 class LessonRequest(Base):
     """
-    A customer's request for one scheduled 30-minute lesson at a specific
-    day/time, matched by specialty + time overlap + nearest distance.
+    A customer's request for one scheduled lesson (30/45/60/75/90
+    minutes, in 15-minute steps) at a specific day/time. Same
+    pending -> broadcast -> instructor-confirms lifecycle as Booking
+    (see that model's docstring) — the only difference here is the
+    broadcast/visibility query also requires a time-overlap match
+    (has_overlap in matching.py), not just specialty + distance.
 
-    This is intentionally a separate model from Booking rather than an
-    extension of it: Booking represents "pick a package (single/4/8) and
-    get matched whenever" with no time component, while a LessonRequest
-    is "I want a lesson in this specific window" — different enough
-    shapes that bolting time/location fields onto Booking would leave
-    most of them null for the package flow. Both flows charge through the
-    same mock-payment helper and reuse the "single" package's $65/1-session
-    pricing, since a scheduled request is always exactly one lesson.
+    This stays a separate model from Booking rather than an extension of
+    it: Booking is "pick a package, get matched whenever" with no time
+    component, while a LessonRequest is "I want a lesson in this specific
+    window" — different enough shapes that bolting time/location fields
+    onto Booking would leave most of them null for the package flow.
     """
     __tablename__ = "lesson_requests"
 
@@ -180,8 +196,10 @@ class LessonRequest(Base):
     instructor_id = Column(Integer, ForeignKey("instructors.id"), nullable=True)
 
     specialty = Column(String, nullable=False)  # "yoga" | "sound_bath"
-    duration_minutes = Column(Integer, default=30, nullable=False)
-    amount_paid = Column(Float, nullable=False)
+    duration_minutes = Column(Integer, default=30, nullable=False)  # 30-90, 15-minute steps
+    amount_paid = Column(Float, nullable=False)  # the price the customer will owe, not necessarily charged yet — see `paid`
+    paid = Column(Boolean, default=False)  # flips True only when an instructor confirms
+    notes = Column(Text, nullable=True)  # anything extra the customer wants the instructor to see
 
     # The window the customer proposed.
     requested_day = Column(Integer, nullable=False)  # 0=Monday ... 6=Sunday
@@ -193,7 +211,7 @@ class LessonRequest(Base):
     matched_end_time = Column(String, nullable=True)
     distance_km = Column(Float, nullable=True)
 
-    status = Column(String, default="matched")  # "matched" | "unmatched"
+    status = Column(String, default="pending")  # "pending" | "matched" | "unmatched"
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     customer = relationship("Customer", back_populates="lesson_requests")

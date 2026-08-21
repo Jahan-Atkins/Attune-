@@ -57,6 +57,7 @@ INSTRUCTORS = [
         city=AUSTIN,
         # Early mornings, most of the week.
         availability=[(0, "06:00", "09:00"), (1, "06:00", "09:00"), (2, "06:00", "09:00"), (3, "06:00", "09:00")],
+        max_travel_distance_km=500,  # the other two leave this unset (no limit), on purpose — real variety to demo the filter
     ),
 ]
 
@@ -78,6 +79,7 @@ try:
             active=True,
             latitude=data["city"]["lat"],
             longitude=data["city"]["lng"],
+            max_travel_distance_km=data.get("max_travel_distance_km"),
         )
         db.add(instructor)
         db.commit()
