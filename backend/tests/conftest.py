@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.database import Base, engine, SessionLocal
-from app import models
+from app import models, rate_limit
 from app.security import hash_password
 
 
@@ -29,6 +29,17 @@ def fresh_database():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    """rate_limit's attempt counts live in a plain module-level dict, not
+    the database, so fresh_database's drop/create doesn't touch them —
+    without this, one test's failed logins could spuriously 429 a later,
+    unrelated test that happens to reuse the same email/IP."""
+    rate_limit.reset_all()
+    yield
+    rate_limit.reset_all()
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -13,7 +13,9 @@ are just JWTs signed with the same SECRET_KEY. Skipping that check would
 be a real, exploitable bug — this is a good example of why "is the token
 valid" and "is the token allowed *here*" are two different questions.
 """
+import hashlib
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status
@@ -47,6 +49,31 @@ def hash_password(plain_password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
+
+
+# ---- Password reset tokens ----
+# The raw token only ever exists in the reset-link email and the request
+# that redeems it — the database stores just its hash (see
+# models.PasswordResetToken), same reasoning as hashed_password above.
+
+def generate_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def naive_utc_now() -> datetime:
+    """Plain datetime.now(timezone.utc) elsewhere in this app is fine
+    because nothing ever compares it after a DB round-trip — but
+    PasswordResetToken.expires_at IS compared (see auth.py/
+    customer_auth.py's reset_password), and SQLite/Postgres both drop
+    the tzinfo on a plain DateTime column, which would raise "can't
+    compare offset-naive and offset-aware datetimes" if one side still
+    had it. Stripping tzinfo before it ever reaches the database sidesteps
+    that entirely — both sides of the comparison are naive UTC."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def create_access_token(subject_id: int, subject_type: str) -> str:

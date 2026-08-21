@@ -112,6 +112,15 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
 # ---- Profile ----
 
 class ProfileOut(BaseModel):
@@ -442,3 +451,56 @@ class ClientDeletionRequestOut(BaseModel):
     client_name: str
     instructor_name: str
     requested_at: datetime
+
+
+# ---- Reports & blocks ----
+# A customer reports/blocks an instructor by that instructor's id; an
+# instructor reports/blocks a customer by the Client id on their own
+# practice list (never a raw customer_id — same reasoning ClientOut's
+# customer_id field already documents: an instructor shouldn't be able to
+# name an arbitrary customer they have no relationship with). The router
+# resolves Client -> customer_id server-side and rejects hand-added
+# clients with no real customer account behind them.
+
+class ReportInstructorRequest(BaseModel):
+    instructor_id: int
+    reason: str
+    message: Optional[str] = None
+
+
+class ReportClientRequest(BaseModel):
+    client_id: int
+    reason: str
+    message: Optional[str] = None
+
+
+class ReportOut(BaseModel):
+    id: int
+    reporter_type: str
+    reporter_name: str
+    reported_type: str
+    reported_name: str
+    reason: str
+    message: Optional[str] = None
+    resolved: bool
+    created_at: datetime
+
+
+class BlockInstructorRequest(BaseModel):
+    instructor_id: int
+
+
+class BlockClientRequest(BaseModel):
+    client_id: int
+
+
+class BlockedInstructorOut(BaseModel):
+    instructor_id: int
+    name: str
+    created_at: datetime
+
+
+class BlockedClientOut(BaseModel):
+    client_id: int
+    name: str
+    created_at: datetime

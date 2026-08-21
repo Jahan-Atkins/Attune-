@@ -389,6 +389,58 @@ async function denyDeletion(id) {
 }
 
 /* =========================================================
+   REPORTS
+   Unlike deletion requests, resolving a report doesn't remove it — it
+   just flips `resolved`, so the default filter is "Open" but Resolved/All
+   stay one click away for reviewing history.
+   ========================================================= */
+async function openReports() {
+  goToScreen('reports');
+  await loadReports();
+}
+
+async function loadReports() {
+  const listEl = document.getElementById('reports-list');
+  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
+  const resolved = document.getElementById('reports-filter-resolved').value;
+  const query = resolved ? `?resolved=${resolved}` : '';
+  try {
+    const reports = await apiFetch(`/api/admin/reports${query}`);
+    listEl.innerHTML = reports.length
+      ? reports.map(reportRowHTML).join('')
+      : '<p class="empty-copy">No reports match this filter.</p>';
+  } catch (err) {
+    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function reportRowHTML(r) {
+  const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
+  const reporterLabel = r.reporter_type === 'instructor' ? 'Instructor' : 'Customer';
+  const reportedLabel = r.reported_type === 'instructor' ? 'instructor' : 'customer';
+  return `
+    <div class="admin-row">
+      <div class="admin-row-main">
+        <p class="admin-row-title">${escapeHtml(r.reporter_name)} (${reporterLabel}) reported ${escapeHtml(r.reported_name)} (${reportedLabel})</p>
+        <p class="admin-row-meta">${escapeHtml(r.reason)}${r.message ? ' — ' + escapeHtml(r.message) : ''} · ${escapeHtml(dateStr)}${r.resolved ? ' · Resolved' : ''}</p>
+      </div>
+      ${!r.resolved ? `
+      <div class="admin-row-actions">
+        <button class="btn btn-outline btn-sm" onclick="resolveReport(${r.id})">Mark Resolved</button>
+      </div>` : ''}
+    </div>`;
+}
+
+async function resolveReport(id) {
+  try {
+    await apiFetch(`/api/admin/reports/${id}/resolve`, { method: 'PUT' });
+    await loadReports();
+  } catch (err) {
+    alert(err.message || 'Could not resolve this report.');
+  }
+}
+
+/* =========================================================
    FAQS
    ========================================================= */
 async function openFaqs() {

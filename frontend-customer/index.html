@@ -74,6 +74,37 @@
         <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;" id="auth-submit-btn">Log In</button>
       </form>
       <button class="link-btn" onclick="toggleAuthMode()" id="auth-toggle-btn">New here? Create an account</button>
+      <button class="link-btn" id="forgot-password-btn" onclick="goToScreen('forgot-password')">Forgot password?</button>
+    </div>
+  </section>
+
+  <!-- ============ FORGOT PASSWORD ============ -->
+  <section class="screen" id="screen-forgot-password">
+    <div class="card wizard-card">
+      <h2 class="card-title">Reset Password</h2>
+      <p class="card-sub">Enter your account email and we'll send a link to reset your password.</p>
+      <div id="fp-error" class="form-error" style="display:none;"></div>
+      <div id="fp-success" style="display:none; margin-top:8px; color:var(--sage-dark, #4a6a5a);">If an account exists for that email, a reset link has been sent.</div>
+      <form id="forgot-password-form" onsubmit="submitForgotPasswordForm(event)">
+        <label class="field-label">Email</label>
+        <input class="field-input" type="email" id="fp-email" required>
+        <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;">Send Reset Link</button>
+      </form>
+      <button class="link-btn" onclick="goToScreen('auth')">Back to log in</button>
+    </div>
+  </section>
+
+  <!-- ============ RESET PASSWORD (landed on via emailed link) ============ -->
+  <section class="screen" id="screen-reset-password">
+    <div class="card wizard-card">
+      <h2 class="card-title">Set a New Password</h2>
+      <p class="card-sub">Choose a new password for your account.</p>
+      <div id="rp-error" class="form-error" style="display:none;"></div>
+      <form id="reset-password-form" onsubmit="submitResetPasswordForm(event)">
+        <label class="field-label">New password</label>
+        <input class="field-input" type="password" id="rp-password" required>
+        <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;">Update Password</button>
+      </form>
     </div>
   </section>
 

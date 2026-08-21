@@ -18,6 +18,7 @@
     <button class="nav-link" onclick="openCustomers()">Customers</button>
     <button class="nav-link" onclick="openRequests()">Requests</button>
     <button class="nav-link" onclick="openDeletionRequests()">Client Deletions</button>
+    <button class="nav-link" onclick="openReports()">Reports</button>
     <button class="nav-link" onclick="openFaqs()">FAQs</button>
     <button class="nav-link" onclick="logout()">Log Out</button>
   </nav>
@@ -102,6 +103,19 @@
     <h2 class="step-title">Client deletion requests</h2>
     <p class="card-sub" style="text-align:left; margin-bottom:18px;">An instructor can no longer delete a client directly — every request lands here first.</p>
     <div id="deletions-list" class="admin-list"></div>
+  </section>
+
+  <!-- ============ REPORTS ============ -->
+  <section class="screen" id="screen-reports">
+    <h2 class="step-title">Reports</h2>
+    <div class="filter-row">
+      <select class="field-select" id="reports-filter-resolved" onchange="loadReports()">
+        <option value="false">Open</option>
+        <option value="true">Resolved</option>
+        <option value="">All</option>
+      </select>
+    </div>
+    <div id="reports-list" class="admin-list"></div>
   </section>
 
   <!-- ============ FAQS ============ -->

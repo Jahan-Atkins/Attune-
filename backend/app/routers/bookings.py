@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from .. import geo, models, schemas
 from ..database import get_db
 from ..security import get_current_customer
+from .blocks import is_blocked
 
 router = APIRouter(prefix="/api/customer/bookings", tags=["bookings"])
 
@@ -68,13 +69,15 @@ def _any_active_instructor_offers(db: Session, specialty: str) -> bool:
     )
 
 
-def _validate_preferred_instructor(db: Session, instructor_id: int, specialty: str) -> None:
+def _validate_preferred_instructor(db: Session, instructor_id: int, specialty: str, customer_id: int) -> None:
     """
     A "Book Again" request targets one specific instructor instead of
     broadcasting — so unlike the normal dead-end check, an instructor who
     can't currently take it fails the request outright (400) rather than
     silently landing as "unmatched", since the frontend can offer a
-    regular (broadcast) request as the next step.
+    regular (broadcast) request as the next step. A block between this
+    customer and instructor (either direction) is treated the same way as
+    "can't currently take it" — see models.Block's docstring.
     """
     instructor = db.query(models.Instructor).filter(models.Instructor.id == instructor_id).first()
     if (
@@ -82,6 +85,7 @@ def _validate_preferred_instructor(db: Session, instructor_id: int, specialty: s
         or not instructor.active
         or instructor.suspended
         or specialty not in [s.strip() for s in (instructor.specialty or "").split(",") if s.strip()]
+        or is_blocked(db, customer_id, instructor_id)
     ):
         raise HTTPException(
             status_code=400,
@@ -103,7 +107,7 @@ def create_booking(
     if not city:
         raise HTTPException(status_code=400, detail="Unknown city.")
     if payload.preferred_instructor_id is not None:
-        _validate_preferred_instructor(db, payload.preferred_instructor_id, payload.specialty)
+        _validate_preferred_instructor(db, payload.preferred_instructor_id, payload.specialty, customer.id)
 
     _mock_charge(payload.card_number, payload.card_expiry, payload.card_cvc)
 

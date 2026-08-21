@@ -19,6 +19,7 @@ from .. import geo, models, schemas
 from ..database import get_db
 from ..matching import has_overlap
 from ..security import get_current_customer
+from .blocks import is_blocked
 from .bookings import _mock_charge
 from .recurring_series import ensure_upcoming_occurrences
 
@@ -72,17 +73,20 @@ def _any_active_instructor_can_fulfill(
 
 def _validate_preferred_instructor(
     db: Session, instructor_id: int, specialty: str,
-    requested_day: int, requested_start: str, requested_end: str, duration_minutes: int,
+    requested_day: int, requested_start: str, requested_end: str, duration_minutes: int, customer_id: int,
 ) -> None:
     """Same "fail fast with a 400" reasoning as bookings.py's version —
     a targeted rebook that can't work should tell the customer to try a
-    regular request instead, not silently land as "unmatched"."""
+    regular request instead, not silently land as "unmatched". A block
+    between this customer and instructor (either direction) fails the
+    same way — see models.Block's docstring."""
     instructor = db.query(models.Instructor).filter(models.Instructor.id == instructor_id).first()
     if (
         not instructor
         or not instructor.active
         or instructor.suspended
         or specialty not in [s.strip() for s in (instructor.specialty or "").split(",") if s.strip()]
+        or is_blocked(db, customer_id, instructor_id)
     ):
         raise HTTPException(
             status_code=400,
@@ -117,6 +121,7 @@ def create_lesson_request(
         _validate_preferred_instructor(
             db, payload.preferred_instructor_id, payload.specialty,
             payload.requested_day, payload.requested_start_time, payload.requested_end_time, payload.duration_minutes,
+            customer.id,
         )
 
     _mock_charge(payload.card_number, payload.card_expiry, payload.card_cvc)

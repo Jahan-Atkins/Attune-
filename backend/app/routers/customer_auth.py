@@ -4,14 +4,20 @@ mirrors app/routers/auth.py's structure so the two are easy to compare —
 the only real difference is create_access_token gets subject_type="customer",
 which is what keeps a customer's token from working on instructor routes.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from .. import models, schemas, security
 from ..database import get_db
+from ..email import send_email
+from ..rate_limit import check_rate_limit, record_failed_attempt, reset_attempts
 
 router = APIRouter(prefix="/api/customer/auth", tags=["customer-auth"])
+
+RESET_TOKEN_EXPIRE_MINUTES = 60
 
 
 @router.post("/signup", response_model=schemas.Token, status_code=201)
@@ -35,13 +41,59 @@ def signup(payload: schemas.CustomerSignupRequest, db: Session = Depends(get_db)
 
 
 @router.post("/login", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    check_rate_limit("login-customer", request, form_data.username)
     customer = db.query(models.Customer).filter(models.Customer.email == form_data.username).first()
     if not customer or not security.verify_password(form_data.password, customer.hashed_password):
+        record_failed_attempt("login-customer", request, form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    reset_attempts("login-customer", request, form_data.username)
     token = security.create_access_token(customer.id, subject_type="customer")
     return schemas.Token(access_token=token)
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: schemas.ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Mirrors auth.py's forgot_password — see that docstring for why the
+    response never reveals whether the email is on file."""
+    check_rate_limit("forgot-password-customer", request, payload.email)
+    record_failed_attempt("forgot-password-customer", request, payload.email)
+    customer = db.query(models.Customer).filter(models.Customer.email == payload.email).first()
+    if customer:
+        raw_token = security.generate_reset_token()
+        db.add(models.PasswordResetToken(
+            account_type="customer",
+            account_id=customer.id,
+            token_hash=security.hash_reset_token(raw_token),
+            expires_at=security.naive_utc_now() + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES),
+        ))
+        db.commit()
+        send_email(
+            to=customer.email,
+            subject="Reset your Attune password",
+            body=f"Use this link within the next hour to reset your password: /customer/?reset_token={raw_token}",
+        )
+    return {"detail": "If an account exists for that email, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+def reset_password(payload: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    token_hash = security.hash_reset_token(payload.token)
+    reset_token = (
+        db.query(models.PasswordResetToken)
+        .filter(models.PasswordResetToken.token_hash == token_hash, models.PasswordResetToken.account_type == "customer")
+        .first()
+    )
+    if not reset_token or reset_token.expires_at < security.naive_utc_now():
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has expired.")
+    customer = db.query(models.Customer).filter(models.Customer.id == reset_token.account_id).first()
+    if not customer:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has expired.")
+    customer.hashed_password = security.hash_password(payload.new_password)
+    db.delete(reset_token)
+    db.commit()
+    return {"detail": "Password updated — you can now log in."}

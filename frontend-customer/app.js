@@ -46,6 +46,7 @@ let durationCatalog = {};
 let lastRequestType = null; // 'package' | 'schedule' — which /me endpoint checkLatestStatus() re-polls
 let preferredInstructorId = null; // set by "Book Again with [Name]", sent as-is in the final submit payload
 let preferredInstructorName = null; // display-only echo of the above, never sent to the backend
+let blockedInstructorIds = new Set(); // populated by loadHistory(), read by historyCardHTML
 
 function showAuth(mode) {
   authMode = mode;
@@ -68,7 +69,57 @@ function applyAuthMode() {
   document.getElementById('auth-sub').textContent = isSignup ? 'Takes about a minute.' : 'Welcome back.';
   document.getElementById('auth-submit-btn').textContent = isSignup ? 'Create Account' : 'Log In';
   document.getElementById('auth-toggle-btn').textContent = isSignup ? 'Already have an account? Log in' : 'New here? Create an account';
+  document.getElementById('forgot-password-btn').style.display = isSignup ? 'none' : 'block';
   document.getElementById('auth-error').style.display = 'none';
+}
+
+/* =========================================================
+   FORGOT / RESET PASSWORD
+   Unauthenticated, so plain fetch (not apiFetch) — same reasoning as
+   the instructor app's version of these two functions.
+   ========================================================= */
+let pendingResetToken = null;
+
+async function submitForgotPasswordForm(evt) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('fp-error');
+  const successEl = document.getElementById('fp-success');
+  errorEl.style.display = 'none';
+  const email = document.getElementById('fp-email').value.trim();
+  try {
+    const res = await fetch('/api/customer/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Something went wrong.');
+    document.getElementById('forgot-password-form').style.display = 'none';
+    successEl.style.display = 'block';
+  } catch (err) {
+    errorEl.textContent = err.message || 'Something went wrong.';
+    errorEl.style.display = 'block';
+  }
+}
+
+async function submitResetPasswordForm(evt) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('rp-error');
+  errorEl.style.display = 'none';
+  const newPassword = document.getElementById('rp-password').value;
+  try {
+    const res = await fetch('/api/customer/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: pendingResetToken, new_password: newPassword }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'That reset link is invalid or has expired.');
+    goToScreen('auth');
+    document.getElementById('auth-error').textContent = 'Password updated — log in with your new password.';
+    document.getElementById('auth-error').style.display = 'block';
+  } catch (err) {
+    errorEl.textContent = err.message || 'That reset link is invalid or has expired.';
+    errorEl.style.display = 'block';
+  }
 }
 
 async function handleAuthSubmit(evt) {
@@ -411,10 +462,12 @@ async function loadHistory() {
   const listEl = document.getElementById('history-list');
   const emptyEl = document.getElementById('history-empty');
   try {
-    const [bookings, lessonRequests] = await Promise.all([
+    const [bookings, lessonRequests, blocked] = await Promise.all([
       apiFetch('/api/customer/bookings'),
       apiFetch('/api/customer/lesson-requests'),
+      apiFetch('/api/customer/blocks'),
     ]);
+    blockedInstructorIds = new Set(blocked.map(b => b.instructor_id));
     const items = [
       ...bookings.map(b => ({ ...b, _type: 'booking' })),
       ...lessonRequests.map(lr => ({ ...lr, _type: 'lesson-request' })),
@@ -454,6 +507,7 @@ function historyCardHTML(item) {
   // *is* a standing booking — offering "make this standing" or "book
   // again" on it would just create a second, redundant series/request.
   const isRecurringOccurrence = item._type === 'lesson-request' && !!item.occurrence_date;
+  const isBlocked = item.instructor && blockedInstructorIds.has(item.instructor.id);
   return `
     <div class="card wizard-card" style="margin:0 0 14px; padding:20px 22px; text-align:left;">
       <p class="card-sub" style="margin:0; text-align:left;">${escapeHtml(dateStr)} · ${escapeHtml(statusLabel)}${isRecurringOccurrence ? ' · Recurring' : ''}</p>
@@ -463,9 +517,73 @@ function historyCardHTML(item) {
           <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleReviewForm('${key}')">Leave a Review</button>
           ${!isRecurringOccurrence ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="${rebookCall}">Book Again with ${escapeHtml(instructorName)}</button>` : ''}
           ${item._type === 'lesson-request' && !isRecurringOccurrence ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="makeRecurring(${item.id})">Make This Standing Weekly</button>` : ''}
+          <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleReportForm('${key}', ${item.instructor.id})">Report</button>
+          <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleBlockInstructor(${item.instructor.id}, '${encodedName}')">${isBlocked ? 'Unblock' : 'Block'}</button>
         </div>
-        <div id="review-form-${key}" style="display:none; margin-top:14px;"></div>` : ''}
+        <div id="review-form-${key}" style="display:none; margin-top:14px;"></div>
+        <div id="report-form-${key}" style="display:none; margin-top:14px;"></div>` : ''}
     </div>`;
+}
+
+/* =========================================================
+   REPORT / BLOCK INSTRUCTOR
+   Same inline-expand shape as the review form above — this app has no
+   modal system, see the "no modal system" note near renderMatch.
+   ========================================================= */
+function toggleReportForm(key, instructorId) {
+  const el = document.getElementById(`report-form-${key}`);
+  if (el.style.display === 'block') {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  el.style.display = 'block';
+  el.innerHTML = `
+    <select class="field-input" id="report-reason-${key}">
+      <option value="no-show">No-show</option>
+      <option value="harassment">Harassment or inappropriate behavior</option>
+      <option value="safety">Safety concern</option>
+      <option value="other">Other</option>
+    </select>
+    <textarea class="field-input" id="report-message-${key}" placeholder="Optional details" style="margin-top:8px; min-height:60px;"></textarea>
+    <div id="report-error-${key}" class="form-error" style="display:none; margin-top:8px;"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:8px; padding:10px;" onclick="submitReport('${key}', ${instructorId})">Submit Report</button>`;
+}
+
+async function submitReport(key, instructorId) {
+  const errorEl = document.getElementById(`report-error-${key}`);
+  errorEl.style.display = 'none';
+  const payload = {
+    instructor_id: instructorId,
+    reason: document.getElementById(`report-reason-${key}`).value,
+    message: document.getElementById(`report-message-${key}`).value.trim() || null,
+  };
+  try {
+    await apiFetch('/api/customer/reports', { method: 'POST', body: JSON.stringify(payload) });
+    document.getElementById(`report-form-${key}`).style.display = 'none';
+    document.getElementById(`report-form-${key}`).innerHTML = '';
+    alert('Report submitted. An admin will review it.');
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not submit report.';
+    errorEl.style.display = 'block';
+  }
+}
+
+async function toggleBlockInstructor(instructorId, encodedName) {
+  const name = decodeURIComponent(encodedName);
+  const isBlocked = blockedInstructorIds.has(instructorId);
+  const verb = isBlocked ? 'unblock' : 'block';
+  if (!confirm(`${isBlocked ? 'Unblock' : 'Block'} ${name}? ${isBlocked ? '' : "You won't be matched with them again."}`)) return;
+  try {
+    if (isBlocked) {
+      await apiFetch(`/api/customer/blocks/${instructorId}`, { method: 'DELETE' });
+    } else {
+      await apiFetch('/api/customer/blocks', { method: 'POST', body: JSON.stringify({ instructor_id: instructorId }) });
+    }
+    await loadHistory();
+  } catch (err) {
+    alert(err.message || `Could not ${verb} this instructor.`);
+  }
 }
 
 async function makeRecurring(lessonRequestId) {
@@ -722,6 +840,13 @@ async function routeLoggedInCustomer() {
 
 document.addEventListener('DOMContentLoaded', () => {
   updateNav();
+  const resetToken = new URLSearchParams(window.location.search).get('reset_token');
+  if (resetToken) {
+    history.replaceState(null, '', window.location.pathname);
+    pendingResetToken = resetToken;
+    goToScreen('reset-password');
+    return;
+  }
   if (getToken()) {
     routeLoggedInCustomer();
   }

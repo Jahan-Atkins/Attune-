@@ -441,6 +441,74 @@ class Review(Base):
         return self.customer.name if self.customer else None
 
 
+class PasswordResetToken(Base):
+    """
+    A short-lived, single-use token for the forgot-password flow (see
+    routers/auth.py and routers/customer_auth.py — Admin has no self-serve
+    reset, matching its no-signup docstring below). Only `token_hash` is
+    stored, never the raw token, same reasoning as hashed_password: a DB
+    leak shouldn't hand out a working reset link. account_type/account_id
+    play the same role as Report/Block's reporter_type/reporter_id below —
+    this table serves both Instructor and Customer accounts, which live in
+    different tables, so a single typed foreign key isn't possible.
+    """
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_type = Column(String, nullable=False)  # "instructor" | "customer"
+    account_id = Column(Integer, nullable=False)
+    token_hash = Column(String, nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Report(Base):
+    """
+    Either side of a match can report the other for a trust & safety
+    concern — see routers/reports.py. Unlike ClientDeletionRequest, a
+    report keeps a persistent history: `resolved` just marks whether an
+    admin has looked at it, it never deletes the row, since a pattern
+    across multiple past reports (same reporter, or the same person
+    reported repeatedly) is exactly what an admin needs to be able to see.
+
+    reporter_type/reported_type + *_id (not a typed foreign key) because
+    either side of a report can be an Instructor or a Customer — the same
+    "two possible tables, one column" shape as PasswordResetToken above.
+    """
+    __tablename__ = "reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reporter_type = Column(String, nullable=False)  # "instructor" | "customer"
+    reporter_id = Column(Integer, nullable=False)
+    reported_type = Column(String, nullable=False)  # "instructor" | "customer"
+    reported_id = Column(Integer, nullable=False)
+    reason = Column(String, nullable=False)
+    message = Column(Text, nullable=True)
+    resolved = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Block(Base):
+    """
+    `blocker` has blocked `blocked` — see routers/blocks.py. Stored
+    one-directional, but treated as symmetric everywhere it matters: a
+    block from either side is enough to stop a future match between the
+    two (see client_requests.py's visibility checks), even though only
+    one side actively chose to block.
+    """
+    __tablename__ = "blocks"
+    __table_args__ = (
+        UniqueConstraint("blocker_type", "blocker_id", "blocked_type", "blocked_id", name="uq_block_pair"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    blocker_type = Column(String, nullable=False)  # "instructor" | "customer"
+    blocker_id = Column(Integer, nullable=False)
+    blocked_type = Column(String, nullable=False)  # "instructor" | "customer"
+    blocked_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class Admin(Base):
     """
     A third account type, alongside Instructor and Customer — see

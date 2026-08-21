@@ -26,6 +26,7 @@ from ..database import get_db
 from ..email import send_email
 from ..matching import has_overlap, within_travel_distance
 from ..security import get_current_instructor
+from .blocks import is_blocked
 
 router = APIRouter(prefix="/api/client-requests", tags=["client-requests"])
 
@@ -36,7 +37,7 @@ def _my_specialties(instructor: models.Instructor) -> List[str]:
     return [s.strip() for s in (instructor.specialty or "").split(",") if s.strip()]
 
 
-def _instructor_sees_booking(instructor: models.Instructor, booking: models.Booking) -> bool:
+def _instructor_sees_booking(db: Session, instructor: models.Instructor, booking: models.Booking) -> bool:
     if not instructor.active or instructor.suspended:
         return False
     if booking.preferred_instructor_id is not None and booking.preferred_instructor_id != instructor.id:
@@ -44,13 +45,15 @@ def _instructor_sees_booking(instructor: models.Instructor, booking: models.Book
     if booking.specialty not in _my_specialties(instructor):
         return False
     customer = booking.customer
+    if is_blocked(db, customer.id, instructor.id):
+        return False
     return within_travel_distance(
         instructor.max_travel_distance_km, instructor.latitude, instructor.longitude,
         customer.latitude, customer.longitude,
     )
 
 
-def _instructor_sees_lesson_request(instructor: models.Instructor, lesson_request: models.LessonRequest) -> bool:
+def _instructor_sees_lesson_request(db: Session, instructor: models.Instructor, lesson_request: models.LessonRequest) -> bool:
     if not instructor.active or instructor.suspended:
         return False
     if lesson_request.preferred_instructor_id is not None and lesson_request.preferred_instructor_id != instructor.id:
@@ -58,6 +61,8 @@ def _instructor_sees_lesson_request(instructor: models.Instructor, lesson_reques
     if lesson_request.specialty not in _my_specialties(instructor):
         return False
     customer = lesson_request.customer
+    if is_blocked(db, customer.id, instructor.id):
+        return False
     if not within_travel_distance(
         instructor.max_travel_distance_km, instructor.latitude, instructor.longitude,
         customer.latitude, customer.longitude,
@@ -130,8 +135,8 @@ def list_client_requests(
     pending_bookings = db.query(models.Booking).filter(models.Booking.status == "pending").all()
     pending_lesson_requests = db.query(models.LessonRequest).filter(models.LessonRequest.status == "pending").all()
 
-    results = [_booking_out(instructor, b) for b in pending_bookings if _instructor_sees_booking(instructor, b)]
-    results += [_lesson_request_out(instructor, lr) for lr in pending_lesson_requests if _instructor_sees_lesson_request(instructor, lr)]
+    results = [_booking_out(instructor, b) for b in pending_bookings if _instructor_sees_booking(db, instructor, b)]
+    results += [_lesson_request_out(instructor, lr) for lr in pending_lesson_requests if _instructor_sees_lesson_request(db, instructor, lr)]
     results.sort(key=lambda r: r.created_at or "", reverse=True)
     return results
 
@@ -221,7 +226,7 @@ def confirm_booking(
     booking = db.query(models.Booking).filter(models.Booking.id == booking_id, models.Booking.status == "pending").first()
     if not booking:
         raise HTTPException(status_code=404, detail="This request is no longer available.")
-    if not _instructor_sees_booking(instructor, booking):
+    if not _instructor_sees_booking(db, instructor, booking):
         raise HTTPException(status_code=400, detail="This request doesn't match your specialty or travel distance.")
 
     booking.instructor_id = instructor.id
@@ -247,7 +252,7 @@ def confirm_lesson_request(
     )
     if not lesson_request:
         raise HTTPException(status_code=404, detail="This request is no longer available.")
-    if not _instructor_sees_lesson_request(instructor, lesson_request):
+    if not _instructor_sees_lesson_request(db, instructor, lesson_request):
         raise HTTPException(status_code=400, detail="This request no longer fits your specialty, availability, or travel distance.")
 
     blocks = [(b.day_of_week, b.start_time, b.end_time) for b in instructor.availability_blocks]

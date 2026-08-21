@@ -56,7 +56,81 @@ function toggleAuthMode() {
   document.getElementById('login-sub').textContent = isSignup ? "Create your instructor account" : "Log in to your instructor account";
   document.getElementById('auth-submit-btn').textContent = isSignup ? 'Create Account' : 'Log In';
   document.getElementById('auth-toggle-btn').textContent = isSignup ? 'Already have an account? Log in' : 'New here? Create an account';
+  document.getElementById('forgot-password-btn').style.display = isSignup ? 'none' : 'block';
   document.getElementById('login-error').style.display = 'none';
+}
+
+/* =========================================================
+   FORGOT / RESET PASSWORD
+   Unauthenticated, so these use plain fetch (not apiFetch, which
+   attaches a token and would log the user out on a 401 that isn't
+   actually about their session).
+   ========================================================= */
+function openForgotPasswordModal() {
+  const body = `
+    <p class="card-body" style="margin-bottom:16px;">Enter your account email and we'll send a link to reset your password.</p>
+    <form id="forgot-password-form" onsubmit="submitForgotPasswordForm(event)">
+      <label class="field-label">Email</label>
+      <input class="field-input" type="email" id="fp-email" required>
+      <div id="fp-error" class="form-error" style="display:none; margin-top:12px;"></div>
+      <div id="fp-success" style="display:none; margin-top:12px; color:var(--sage-dark, #4a6a5a);">If an account exists for that email, a reset link has been sent.</div>
+      <button class="pill pill-solid pill-block" type="submit" style="margin-top:16px;">Send Reset Link</button>
+    </form>`;
+  openModal('Reset Password', body);
+}
+
+async function submitForgotPasswordForm(evt) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('fp-error');
+  const successEl = document.getElementById('fp-success');
+  errorEl.style.display = 'none';
+  const email = document.getElementById('fp-email').value.trim();
+  try {
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Something went wrong.');
+    document.getElementById('forgot-password-form').style.display = 'none';
+    successEl.style.display = 'block';
+  } catch (err) {
+    errorEl.textContent = err.message || 'Something went wrong.';
+    errorEl.style.display = 'block';
+  }
+}
+
+function openResetPasswordModal(token) {
+  const body = `
+    <p class="card-body" style="margin-bottom:16px;">Choose a new password for your account.</p>
+    <form id="reset-password-form" onsubmit="submitResetPasswordForm(event, '${escapeAttr(token)}')">
+      <label class="field-label">New password</label>
+      <input class="field-input" type="password" id="rp-password" required>
+      <div id="rp-error" class="form-error" style="display:none; margin-top:12px;"></div>
+      <button class="pill pill-solid pill-block" type="submit" style="margin-top:16px;">Update Password</button>
+    </form>`;
+  openModal('Set a New Password', body);
+}
+
+async function submitResetPasswordForm(evt, token) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('rp-error');
+  errorEl.style.display = 'none';
+  const newPassword = document.getElementById('rp-password').value;
+  try {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'That reset link is invalid or has expired.');
+    closeModal();
+    document.getElementById('login-error').textContent = 'Password updated — log in with your new password.';
+    document.getElementById('login-error').style.display = 'block';
+  } catch (err) {
+    errorEl.textContent = err.message || 'That reset link is invalid or has expired.';
+    errorEl.style.display = 'block';
+  }
 }
 
 async function handleAuthSubmit(evt) {
@@ -431,6 +505,11 @@ function renderClientDetail(c) {
   deleteBtn.disabled = c.deletion_pending;
   deleteBtn.classList.toggle('pending', c.deletion_pending);
 
+  // Report/Block only make sense for a client backed by a real Customer
+  // account — a hand-added client (no customer_id) has no one to report.
+  document.getElementById('cd-safety-row').style.display = c.customer_id ? 'flex' : 'none';
+  if (c.customer_id) loadBlockedIndicator(c.customer_id);
+
   const contactEl = document.getElementById('cd-contact-block');
   if (c.email || c.phone) {
     contactEl.innerHTML = `
@@ -511,6 +590,78 @@ function contactClient() {
     window.location.href = `tel:${c.phone}`;
   } else {
     alert('No contact info on file for this client yet.');
+  }
+}
+
+/* =========================================================
+   REPORT / BLOCK CLIENT
+   Both only apply to a client backed by a real Customer account — see
+   renderClientDetail's cd-safety-row visibility check above.
+   ========================================================= */
+let currentClientBlocked = false;
+
+async function loadBlockedIndicator(customerId) {
+  try {
+    const blocked = await apiFetch('/api/profile/blocks');
+    currentClientBlocked = blocked.some(b => b.client_id === currentClientDetailId);
+    const btn = document.getElementById('cd-block-btn');
+    btn.textContent = currentClientBlocked ? 'Unblock Client' : 'Block Client';
+    btn.classList.toggle('pending', currentClientBlocked);
+  } catch (err) {
+    console.error('Failed to load block status:', err);
+  }
+}
+
+function openReportClientModal() {
+  const body = `
+    <form id="report-client-form" onsubmit="submitReportClientForm(event)">
+      <label class="field-label">Reason</label>
+      <select class="field-select" id="rc-reason" required>
+        <option value="">Select a reason</option>
+        <option value="no-show">No-show</option>
+        <option value="harassment">Harassment or inappropriate behavior</option>
+        <option value="safety">Safety concern</option>
+        <option value="other">Other</option>
+      </select>
+      <label class="field-label">Details (optional)</label>
+      <textarea class="field-input" id="rc-message" style="min-height:80px;"></textarea>
+      <div id="rc-error" class="form-error" style="display:none; margin-top:12px;"></div>
+      <button class="pill pill-solid pill-block" type="submit" style="margin-top:16px;">Submit Report</button>
+    </form>`;
+  openModal(`Report ${currentClientDetail ? currentClientDetail.name : 'Client'}`, body);
+}
+
+async function submitReportClientForm(evt) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('rc-error');
+  errorEl.style.display = 'none';
+  const payload = {
+    client_id: currentClientDetailId,
+    reason: document.getElementById('rc-reason').value,
+    message: document.getElementById('rc-message').value.trim() || null,
+  };
+  try {
+    await apiFetch('/api/profile/reports', { method: 'POST', body: JSON.stringify(payload) });
+    closeModal();
+    alert('Report submitted. An admin will review it.');
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not submit report.';
+    errorEl.style.display = 'block';
+  }
+}
+
+async function toggleBlockClient() {
+  const verb = currentClientBlocked ? 'unblock' : 'block';
+  if (!confirm(`${verb === 'block' ? 'Block' : 'Unblock'} this client? ${verb === 'block' ? "You won't be matched with them again." : ''}`)) return;
+  try {
+    if (currentClientBlocked) {
+      await apiFetch(`/api/profile/blocks/${currentClientDetailId}`, { method: 'DELETE' });
+    } else {
+      await apiFetch('/api/profile/blocks', { method: 'POST', body: JSON.stringify({ client_id: currentClientDetailId }) });
+    }
+    await openClientDetail(currentClientDetailId);
+  } catch (err) {
+    alert(err.message || `Could not ${verb} this client.`);
   }
 }
 
@@ -1229,4 +1380,11 @@ async function boot() {
   ]);
 }
 
-document.addEventListener('DOMContentLoaded', boot);
+document.addEventListener('DOMContentLoaded', () => {
+  const resetToken = new URLSearchParams(window.location.search).get('reset_token');
+  if (resetToken) {
+    history.replaceState(null, '', window.location.pathname);
+    openResetPasswordModal(resetToken);
+  }
+  boot();
+});

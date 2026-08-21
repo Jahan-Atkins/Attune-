@@ -332,3 +332,52 @@ def deny_client_deletion(request_id: int, db: Session = Depends(get_db), admin: 
         body=f"An admin denied your request to delete {out.client_name}. This client remains on your practice.",
     )
     return out
+
+
+# ---- Reports ----
+# Unlike client deletion requests, a report is never deleted when
+# resolved — see models.Report's docstring for why a persistent history
+# matters here specifically.
+
+def _resolve_name(db: Session, account_type: str, account_id: int) -> str:
+    model = models.Instructor if account_type == "instructor" else models.Customer
+    account = db.query(model).filter(model.id == account_id).first()
+    return account.name if account else "(deleted account)"
+
+
+def _report_out(db: Session, report: models.Report) -> schemas.ReportOut:
+    return schemas.ReportOut(
+        id=report.id,
+        reporter_type=report.reporter_type,
+        reporter_name=_resolve_name(db, report.reporter_type, report.reporter_id),
+        reported_type=report.reported_type,
+        reported_name=_resolve_name(db, report.reported_type, report.reported_id),
+        reason=report.reason,
+        message=report.message,
+        resolved=report.resolved,
+        created_at=report.created_at,
+    )
+
+
+@router.get("/reports", response_model=List[schemas.ReportOut])
+def list_reports(
+    resolved: Optional[bool] = Query(None),
+    db: Session = Depends(get_db),
+    admin: models.Admin = Depends(get_current_admin),
+):
+    query = db.query(models.Report)
+    if resolved is not None:
+        query = query.filter(models.Report.resolved == resolved)
+    reports = query.order_by(models.Report.id.desc()).all()
+    return [_report_out(db, r) for r in reports]
+
+
+@router.put("/reports/{report_id}/resolve", response_model=schemas.ReportOut)
+def resolve_report(report_id: int, db: Session = Depends(get_db), admin: models.Admin = Depends(get_current_admin)):
+    report = db.query(models.Report).filter(models.Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    report.resolved = True
+    db.commit()
+    db.refresh(report)
+    return _report_out(db, report)

@@ -33,6 +33,7 @@
       <button class="pill pill-solid pill-block" type="submit" style="margin-top:16px;" id="auth-submit-btn">Log In</button>
     </form>
     <button class="link-btn" onclick="toggleAuthMode()" id="auth-toggle-btn">New here? Create an account</button>
+    <button class="link-btn" id="forgot-password-btn" onclick="openForgotPasswordModal()">Forgot password?</button>
     <p class="login-hint">Demo login: demo@attune.app / password123</p>
   </div>
 </div>
@@ -240,6 +241,10 @@
           <button class="action-btn danger" style="flex:1;" id="cd-delete-btn" onclick="deleteClientFromDetail()">Delete</button>
         </div>
         <button class="pill pill-solid pill-block" style="width:100%; margin-top:14px;" onclick="contactClient()">Contact Client</button>
+        <div id="cd-safety-row" style="display:none; gap:8px; margin-top:8px;">
+          <button class="action-btn" style="flex:1;" onclick="openReportClientModal()">Report Client</button>
+          <button class="action-btn danger" style="flex:1;" id="cd-block-btn" onclick="toggleBlockClient()">Block Client</button>
+        </div>
       </div>
     </section>
 

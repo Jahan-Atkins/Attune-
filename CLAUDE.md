@@ -160,6 +160,45 @@ Check the relevant one before assuming a feature doesn't exist yet.
   `send_email()`, keep using `print()` (or fix logging configuration
   project-wide first) — don't reintroduce a notification that looks like
   it works but never actually shows up anywhere.
+- **Login and forgot-password are rate-limited** (`app/rate_limit.py`) —
+  5 attempts per 15 minutes, keyed by `(scope, client IP, identifier)` in
+  a plain in-process dict, deliberately not Redis (this app runs as a
+  single process — see `LAUNCH-ROADMAP.md`). If you add another
+  brute-forceable endpoint, wire it through `check_rate_limit()` /
+  `record_failed_attempt()` / `reset_attempts()` the same way the three
+  login routes and two forgot-password routes already do — don't build a
+  second rate-limiting mechanism. Tests share this state across a whole
+  pytest run since it's a module-level dict, not the database — see
+  `conftest.py`'s `fresh_rate_limits` fixture, which must stay autouse.
+- **Password reset tokens are single-use and stored hashed, never raw**
+  (`models.PasswordResetToken`, `security.hash_reset_token`). The
+  forgot-password routes always return the same response whether or not
+  the email exists — never make that response conditional, it's an
+  account-enumeration leak. `PasswordResetToken.expires_at` is compared
+  with `security.naive_utc_now()` on both write and read — see that
+  function's docstring before changing either side to a tz-aware
+  `datetime.now(timezone.utc)`, or the comparison can raise.
+- **A block is stored one-directional but enforced as symmetric.**
+  `models.Block` only records `blocker` → `blocked`, but
+  `routers/blocks.py`'s `is_blocked()` checks both directions and is the
+  one function every future-match code path calls: `client_requests.py`'s
+  visibility checks and the "Book Again" `_validate_preferred_instructor`
+  in both `bookings.py` and `lesson_requests.py`. If you add another path
+  that can create a match (broadcast or targeted), it needs the same
+  `is_blocked()` check — don't let a new code path skip it.
+- **Reports are never deleted, unlike `ClientDeletionRequest`.**
+  `Report.resolved` just flips to `True` — admin resolve keeps the row so
+  a pattern across multiple past reports (repeat reporter, repeat
+  offender) stays visible. Don't copy the deletion-request "resolving
+  deletes the row" pattern here; it was a deliberate choice for that
+  feature specifically, not a house style.
+- Reporting/blocking a client is always keyed by that `Client`'s own
+  `id`, never a raw `customer_id` — the router resolves `Client.customer_id`
+  server-side and 404s if the client isn't the calling instructor's own,
+  400s if it has no `customer_id` at all (a hand-added client with no
+  real account behind it). Same reasoning as `ClientOut.customer_id`
+  being read-only. Don't add a route that accepts a bare `customer_id`
+  from an instructor.
 
 ## Commands
 
@@ -171,7 +210,7 @@ alembic upgrade head
 python seed.py           # see logins below
 python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 190 tests in backend/tests/ — run after any route change
+pytest                    # 225 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -267,8 +306,13 @@ pricing, a Client Requests map (Leaflet via CDN), Postgres + deployment
 parts of `PLATFORM-EXPANSION-ROADMAP.md`: contact info exchange, booking
 history, reviews & ratings, rebooking the same instructor, recurring
 weekly bookings, email notifications, and a full admin side
-(`frontend-admin/`, suspension, force-cancel, FAQ CRUD, metrics). 176
-passing tests cover all of it. See `SCHEDULING-ROADMAP.md`,
+(`frontend-admin/`, suspension, force-cancel, FAQ CRUD, metrics), a
+client-deletion approval workflow (instructor requests, admin
+approves/denies), and three launch-readiness items: rate limiting on
+login/forgot-password, self-serve password reset for instructors and
+customers, and a reporting/blocking mechanism between matched
+instructors and customers. 225 passing tests cover all of it. See
+`SCHEDULING-ROADMAP.md`,
 `REQUEST-CONFIRM-ROADMAP.md`, `CLIENT-DETAILS-ROADMAP.md`, and
 `PLATFORM-EXPANSION-ROADMAP.md` for how each piece got built, and
 `ROADMAP.md` for the deploy history.
