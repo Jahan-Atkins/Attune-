@@ -67,6 +67,26 @@ def _any_active_instructor_offers(db: Session, specialty: str) -> bool:
     )
 
 
+def _validate_preferred_instructor(db: Session, instructor_id: int, specialty: str) -> None:
+    """
+    A "Book Again" request targets one specific instructor instead of
+    broadcasting — so unlike the normal dead-end check, an instructor who
+    can't currently take it fails the request outright (400) rather than
+    silently landing as "unmatched", since the frontend can offer a
+    regular (broadcast) request as the next step.
+    """
+    instructor = db.query(models.Instructor).filter(models.Instructor.id == instructor_id).first()
+    if (
+        not instructor
+        or not instructor.active
+        or specialty not in [s.strip() for s in (instructor.specialty or "").split(",") if s.strip()]
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="This instructor can't currently take this request — try a regular request instead.",
+        )
+
+
 @router.post("", response_model=schemas.BookingOut, status_code=201)
 def create_booking(
     payload: schemas.BookingCreate,
@@ -80,6 +100,8 @@ def create_booking(
     city = geo.CITY_BY_NAME.get(payload.city)
     if not city:
         raise HTTPException(status_code=400, detail="Unknown city.")
+    if payload.preferred_instructor_id is not None:
+        _validate_preferred_instructor(db, payload.preferred_instructor_id, payload.specialty)
 
     _mock_charge(payload.card_number, payload.card_expiry, payload.card_cvc)
 
@@ -87,11 +109,12 @@ def create_booking(
     customer.longitude = city["lng"]
 
     pricing = PACKAGE_PRICING[payload.package]
-    has_any_candidate = _any_active_instructor_offers(db, payload.specialty)
+    has_any_candidate = payload.preferred_instructor_id is not None or _any_active_instructor_offers(db, payload.specialty)
 
     booking = models.Booking(
         customer_id=customer.id,
         instructor_id=None,
+        preferred_instructor_id=payload.preferred_instructor_id,
         specialty=payload.specialty,
         package=payload.package,
         sessions_total=pricing["sessions"],

@@ -155,6 +155,7 @@ class CustomerSignupRequest(BaseModel):
 # contact info).
 
 class InstructorPublicOut(BaseModel):
+    id: int
     name: str
     email: EmailStr
     phone: str
@@ -173,6 +174,7 @@ class BookingCreate(BaseModel):
     package: str    # "single" | "pack4" | "pack8"
     city: str       # one of geo.DEMO_CITIES' names
     notes: Optional[str] = None  # anything extra for the instructor to see
+    preferred_instructor_id: Optional[int] = None  # set by "Book Again"
     card_name: str
     card_number: str
     card_expiry: str
@@ -220,6 +222,7 @@ class LessonRequestCreate(BaseModel):
     requested_start_time: str  # "HH:MM"
     requested_end_time: str  # "HH:MM"
     notes: Optional[str] = None  # anything extra for the instructor to see
+    preferred_instructor_id: Optional[int] = None  # set by "Book Again"
     card_name: str
     card_number: str
     card_expiry: str

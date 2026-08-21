@@ -130,3 +130,75 @@ def test_list_lesson_requests_returns_full_history_newest_first(client, customer
 
     history = client.get("/api/customer/lesson-requests", headers=customer_auth_headers).json()
     assert [lr["id"] for lr in history] == [second["id"], first["id"]]
+
+
+def _matched_instructor_id(client, customer_auth_headers, instructor_headers):
+    """Books once, confirms it, and returns the matched instructor's id —
+    every rebook test needs a real prior match to target."""
+    token = client.post("/api/customer/lesson-requests", json=_request_payload(), headers=customer_auth_headers).json()
+    client.put(f"/api/client-requests/lesson-requests/{token['id']}/confirm", headers=instructor_headers)
+    return client.get("/api/customer/lesson-requests", headers=customer_auth_headers).json()[0]["instructor"]["id"]
+
+
+def test_rebook_targets_only_the_preferred_instructor(client, customer_auth_headers):
+    instructor_token = signup_instructor_with_specialty(client, email="lr_rebook_target@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    add_availability(client, instructor_headers, TUESDAY, "08:00", "12:00")
+    instructor_id = _matched_instructor_id(client, customer_auth_headers, instructor_headers)
+
+    other_token = signup_instructor_with_specialty(client, email="lr_rebook_bystander@example.com", specialty="yoga")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    add_availability(client, other_headers, TUESDAY, "08:00", "12:00")
+
+    rebook = client.post(
+        "/api/customer/lesson-requests",
+        json=_request_payload(preferred_instructor_id=instructor_id, requested_start_time="10:00", requested_end_time="11:00"),
+        headers=customer_auth_headers,
+    )
+    assert rebook.status_code == 201
+    assert rebook.json()["status"] == "pending"
+
+    assert client.get("/api/client-requests", headers=other_headers).json() == []
+    assert len(client.get("/api/client-requests", headers=instructor_headers).json()) == 1
+
+
+def test_rebook_confirms_normally(client, customer_auth_headers):
+    instructor_token = signup_instructor_with_specialty(client, email="lr_rebook_confirm@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    add_availability(client, instructor_headers, TUESDAY, "08:00", "12:00")
+    instructor_id = _matched_instructor_id(client, customer_auth_headers, instructor_headers)
+
+    rebook = client.post(
+        "/api/customer/lesson-requests", json=_request_payload(preferred_instructor_id=instructor_id), headers=customer_auth_headers,
+    ).json()
+    confirmed = client.put(f"/api/client-requests/lesson-requests/{rebook['id']}/confirm", headers=instructor_headers)
+    assert confirmed.status_code == 200
+    assert confirmed.json()["customer_email"] == "customer@example.com"
+
+
+def test_rebook_rejected_when_no_overlap_with_preferred_instructor(client, customer_auth_headers):
+    instructor_token = signup_instructor_with_specialty(client, email="lr_rebook_no_overlap@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    add_availability(client, instructor_headers, TUESDAY, "08:00", "12:00")
+    instructor_id = _matched_instructor_id(client, customer_auth_headers, instructor_headers)
+
+    res = client.post(
+        "/api/customer/lesson-requests",
+        json=_request_payload(preferred_instructor_id=instructor_id, requested_day=3, requested_start_time="09:00", requested_end_time="11:00"),
+        headers=customer_auth_headers,
+    )
+    assert res.status_code == 400
+
+
+def test_rebook_rejected_when_instructor_inactive(client, customer_auth_headers):
+    instructor_token = signup_instructor_with_specialty(client, email="lr_rebook_inactive@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    add_availability(client, instructor_headers, TUESDAY, "08:00", "12:00")
+    instructor_id = _matched_instructor_id(client, customer_auth_headers, instructor_headers)
+
+    client.put("/api/profile", json={"active": False}, headers=instructor_headers)
+
+    res = client.post(
+        "/api/customer/lesson-requests", json=_request_payload(preferred_instructor_id=instructor_id), headers=customer_auth_headers,
+    )
+    assert res.status_code == 400

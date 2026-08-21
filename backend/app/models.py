@@ -41,9 +41,13 @@ class Instructor(Base):
 
     clients = relationship("Client", back_populates="instructor", cascade="all, delete-orphan")
     requested_sessions = relationship("SessionListing", back_populates="requested_by")
-    matched_bookings = relationship("Booking", back_populates="instructor")
+    # foreign_keys= is required on both of these now that Booking/LessonRequest
+    # each have a *second* FK to instructors (preferred_instructor_id, for
+    # "Book Again" rebooking) — without it SQLAlchemy can't tell which FK
+    # this relationship should join on.
+    matched_bookings = relationship("Booking", back_populates="instructor", foreign_keys="Booking.instructor_id")
     availability_blocks = relationship("AvailabilityBlock", back_populates="instructor", cascade="all, delete-orphan")
-    matched_lesson_requests = relationship("LessonRequest", back_populates="instructor")
+    matched_lesson_requests = relationship("LessonRequest", back_populates="instructor", foreign_keys="LessonRequest.instructor_id")
     reviews_received = relationship("Review", back_populates="instructor", cascade="all, delete-orphan")
 
     @property
@@ -215,6 +219,11 @@ class Booking(Base):
     id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     instructor_id = Column(Integer, ForeignKey("instructors.id"), nullable=True)
+    # Set only by a "Book Again" rebooking request — narrows the broadcast
+    # to this one instructor instead of every eligible one. See
+    # routers/bookings.py's create route and client_requests.py's
+    # visibility check.
+    preferred_instructor_id = Column(Integer, ForeignKey("instructors.id"), nullable=True)
 
     specialty = Column(String, nullable=False)  # "yoga" | "sound_bath"
     package = Column(String, nullable=False)  # "single" | "pack4" | "pack8"
@@ -226,7 +235,7 @@ class Booking(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     customer = relationship("Customer", back_populates="bookings")
-    instructor = relationship("Instructor", back_populates="matched_bookings")
+    instructor = relationship("Instructor", back_populates="matched_bookings", foreign_keys=[instructor_id])
 
 
 class AvailabilityBlock(Base):
@@ -272,6 +281,9 @@ class LessonRequest(Base):
     id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     instructor_id = Column(Integer, ForeignKey("instructors.id"), nullable=True)
+    # Set only by a "Book Again" rebooking request — see Booking's
+    # identical field above for the full rationale.
+    preferred_instructor_id = Column(Integer, ForeignKey("instructors.id"), nullable=True)
 
     specialty = Column(String, nullable=False)  # "yoga" | "sound_bath"
     duration_minutes = Column(Integer, default=30, nullable=False)  # 30-90, 15-minute steps
@@ -293,7 +305,7 @@ class LessonRequest(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     customer = relationship("Customer", back_populates="lesson_requests")
-    instructor = relationship("Instructor", back_populates="matched_lesson_requests")
+    instructor = relationship("Instructor", back_populates="matched_lesson_requests", foreign_keys=[instructor_id])
 
 
 class Review(Base):

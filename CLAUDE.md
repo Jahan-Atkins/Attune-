@@ -142,6 +142,18 @@ the dropdown).
 
 ## Known gotchas
 
+- **`backend/.env` may point at production Postgres, not local SQLite.**
+  It gets pointed there deliberately during a deploy (see the Render
+  gotcha below — "point your local `DATABASE_URL` at it temporarily and
+  run it from your machine"), and it's easy to forget to point it back.
+  `database.py`'s `load_dotenv()` reads it automatically, so a plain
+  `uvicorn app.main:app --reload` with no explicit `DATABASE_URL` env var
+  silently runs against whatever `.env` currently has — this has already
+  once created and had to manually clean up a stray row on production
+  during local testing. Before any local dev/testing session, check
+  `backend/.env`'s current value, or just always override it explicitly:
+  `DATABASE_URL="sqlite:///./attune.db" uvicorn app.main:app --reload`.
+
 - `passlib`'s bcrypt backend breaks against recent `bcrypt` releases —
   `requirements.txt` pins `bcrypt==4.0.1` on purpose. Don't let `pip` drift
   it to latest.

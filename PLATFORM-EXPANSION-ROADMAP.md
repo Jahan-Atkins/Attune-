@@ -29,7 +29,7 @@ scale.
    matches," which doesn't exist today (the API only ever returns the
    *latest* one)
 3. **Reviews & ratings** ✅ done — depends on #2
-4. **Rebook the same instructor** — depends on #2, and its
+4. **Rebook the same instructor** ✅ done — depends on #2, and its
    `preferred_instructor_id` mechanism is reused by #5
 5. **Recurring bookings** — depends on #4's targeting mechanism
 6. **Notifications** — touches every feature above as a trigger point, so
@@ -198,7 +198,19 @@ avoids building one). Covered by 15 new tests in `test_reviews.py`.
 
 ---
 
-## Part 4 — Rebook the same instructor
+## Part 4 — Rebook the same instructor ✅ done
+
+Built as designed below. One deviation: a targeted rebook that fails
+eligibility (instructor no longer offers the specialty, is inactive, or
+— for lesson requests — has no overlapping availability) rejects with a
+400 immediately at creation time rather than silently landing as
+"unmatched", so the frontend can prompt "try a regular request instead."
+`InstructorPublicOut` gained an `id` field so the frontend actually has
+something to pass back as `preferred_instructor_id`. Verified end-to-end
+in-browser: a rebook targeted at Maya was invisible to Priya even though
+Priya also offers yoga and would normally be eligible. Covered by new
+tests in `test_bookings.py`/`test_lesson_requests.py` (targeting,
+visibility narrowing, confirm, and all three rejection cases).
 
 The cleanest of the five to build, because it reuses the entire existing
 pending/broadcast/confirm machinery rather than needing a parallel path.

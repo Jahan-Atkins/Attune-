@@ -44,6 +44,8 @@ let selectedDuration = null;
 let citiesCache = [];
 let durationCatalog = {};
 let lastRequestType = null; // 'package' | 'schedule' — which /me endpoint checkLatestStatus() re-polls
+let preferredInstructorId = null; // set by "Book Again with [Name]", sent as-is in the final submit payload
+let preferredInstructorName = null; // display-only echo of the above, never sent to the backend
 
 function showAuth(mode) {
   authMode = mode;
@@ -155,8 +157,31 @@ async function goToSpecialtyStep() {
 }
 
 function selectSpecialty(specialty) {
+  preferredInstructorId = null; // a fresh specialty pick always means a regular (broadcast) request
+  preferredInstructorName = null;
   selectedSpecialty = specialty;
   goToScreen('booking-type');
+}
+
+/* Rebooking — "Book Again with [Name]" on a matched History card. Skips
+   straight to the package/schedule step the normal wizard would only
+   reach after picking a specialty and a booking type, since both are
+   already implied by the past match being rebooked. */
+function rebookPackage(instructorId, specialty, encodedInstructorName) {
+  preferredInstructorId = instructorId;
+  preferredInstructorName = decodeURIComponent(encodedInstructorName || '');
+  selectedSpecialty = specialty;
+  loadPackages();
+  goToScreen('package');
+}
+
+async function rebookSchedule(instructorId, specialty, durationMinutes, encodedInstructorName) {
+  preferredInstructorId = instructorId;
+  preferredInstructorName = decodeURIComponent(encodedInstructorName || '');
+  selectedSpecialty = specialty;
+  await initScheduleStep();
+  selectScheduleDuration(durationMinutes);
+  goToScreen('schedule');
 }
 
 function chooseBookingType(type) {
@@ -196,8 +221,9 @@ async function selectPackage(pkg) {
   selectedPackage = pkg;
   const info = packageCatalog[pkg];
   const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const rebookNote = preferredInstructorId ? ` · Booking again with ${preferredInstructorName}` : '';
   document.getElementById('payment-summary').textContent =
-    `${specialtyLabel} · ${info.sessions} session${info.sessions > 1 ? 's' : ''} · $${info.price}`;
+    `${specialtyLabel} · ${info.sessions} session${info.sessions > 1 ? 's' : ''} · $${info.price}${rebookNote}`;
 
   const cities = await loadCities();
   document.getElementById('pay-city').innerHTML = cities.map(c => `<option value="${c}">${c}</option>`).join('');
@@ -218,6 +244,7 @@ async function submitPayment(evt) {
     package: selectedPackage,
     city: document.getElementById('pay-city').value,
     notes: document.getElementById('pay-notes').value.trim() || null,
+    preferred_instructor_id: preferredInstructorId,
     card_name: document.getElementById('pay-name').value.trim(),
     card_number: document.getElementById('pay-number').value.trim(),
     card_expiry: document.getElementById('pay-expiry').value.trim(),
@@ -227,6 +254,8 @@ async function submitPayment(evt) {
   try {
     const booking = await apiFetch('/api/customer/bookings', { method: 'POST', body: JSON.stringify(payload) });
     lastRequestType = 'package';
+    preferredInstructorId = null;
+    preferredInstructorName = null;
     renderMatch(booking, true);
     goToScreen('match');
   } catch (err) {
@@ -318,8 +347,9 @@ function submitScheduleSelection() {
   const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
   const city = document.getElementById('schedule-city').value;
   const price = durationCatalog[selectedDuration];
+  const rebookNote = preferredInstructorId ? ` · Booking again with ${preferredInstructorName}` : '';
   document.getElementById('schedule-payment-summary').textContent =
-    `${specialtyLabel} · ${selectedDuration} min · ${DAY_NAMES[selectedDay]}, ${selectedWindow.label} · ${city} · $${price}`;
+    `${specialtyLabel} · ${selectedDuration} min · ${DAY_NAMES[selectedDay]}, ${selectedWindow.label} · ${city} · $${price}${rebookNote}`;
   goToScreen('schedule-payment');
 }
 
@@ -339,6 +369,7 @@ async function submitSchedulePayment(evt) {
     requested_start_time: selectedWindow.start,
     requested_end_time: selectedWindow.end,
     notes: document.getElementById('spay-notes').value.trim() || null,
+    preferred_instructor_id: preferredInstructorId,
     card_name: document.getElementById('spay-name').value.trim(),
     card_number: document.getElementById('spay-number').value.trim(),
     card_expiry: document.getElementById('spay-expiry').value.trim(),
@@ -348,6 +379,8 @@ async function submitSchedulePayment(evt) {
   try {
     const lessonRequest = await apiFetch('/api/customer/lesson-requests', { method: 'POST', body: JSON.stringify(payload) });
     lastRequestType = 'schedule';
+    preferredInstructorId = null;
+    preferredInstructorName = null;
     renderMatch(lessonRequest, true);
     goToScreen('match');
   } catch (err) {
@@ -407,12 +440,22 @@ function historyCardHTML(item) {
   const dateStr = item.created_at ? new Date(item.created_at).toLocaleDateString() : '';
   const instructorName = item.instructor ? item.instructor.name : null;
   const key = `${item._type}-${item.id}`;
+  // Name travels through the onclick attribute URI-encoded (not just
+  // escapeHtml'd) so an instructor's own display name — arbitrary,
+  // user-supplied text — can never break out of the quoted JS argument.
+  const encodedName = instructorName ? encodeURIComponent(instructorName) : '';
+  const rebookCall = item._type === 'lesson-request'
+    ? `rebookSchedule(${item.instructor ? item.instructor.id : 'null'}, '${item.specialty}', ${item.duration_minutes}, '${encodedName}')`
+    : `rebookPackage(${item.instructor ? item.instructor.id : 'null'}, '${item.specialty}', '${encodedName}')`;
   return `
     <div class="card wizard-card" style="margin:0 0 14px; padding:20px 22px; text-align:left;">
       <p class="card-sub" style="margin:0; text-align:left;">${escapeHtml(dateStr)} · ${escapeHtml(statusLabel)}</p>
       <p class="match-name" style="font-size:17px; margin-top:4px;">${escapeHtml(specialtyLabel)}${instructorName ? ' with ' + escapeHtml(instructorName) : ''}</p>
-      ${item.status === 'matched' ? `
-        <button class="btn btn-outline" style="margin-top:12px; padding:10px 16px; font-size:13px;" onclick="toggleReviewForm('${key}')">Leave a Review</button>
+      ${item.status === 'matched' && item.instructor ? `
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+          <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleReviewForm('${key}')">Leave a Review</button>
+          <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="${rebookCall}">Book Again with ${escapeHtml(instructorName)}</button>
+        </div>
         <div id="review-form-${key}" style="display:none; margin-top:14px;"></div>` : ''}
     </div>`;
 }

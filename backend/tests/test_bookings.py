@@ -123,3 +123,81 @@ def test_list_bookings_isolated_between_customers(client, customer_auth_headers)
 
     assert len(client.get("/api/customer/bookings", headers=customer_auth_headers).json()) == 1
     assert len(client.get("/api/customer/bookings", headers=other_headers).json()) == 0
+
+
+def test_rebook_targets_only_the_preferred_instructor(client, customer_auth_headers):
+    instructor_token = signup_instructor_with_specialty(client, email="rebook_target@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    first = client.post("/api/customer/bookings", json=_payload(), headers=customer_auth_headers).json()
+    client.put(f"/api/client-requests/bookings/{first['id']}/confirm", headers=instructor_headers)
+    # ClientRequestConfirmedOut describes the *request*, not the instructor
+    # — fetch the matched instructor's id from the booking's own record.
+    instructor_id = client.get("/api/customer/bookings", headers=customer_auth_headers).json()[0]["instructor"]["id"]
+
+    # A second, otherwise-eligible instructor exists but should never see
+    # a request targeted at someone else.
+    other_token = signup_instructor_with_specialty(client, email="rebook_bystander@example.com", specialty="yoga")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+
+    rebook = client.post(
+        "/api/customer/bookings", json=_payload(preferred_instructor_id=instructor_id), headers=customer_auth_headers,
+    )
+    assert rebook.status_code == 201
+    assert rebook.json()["status"] == "pending"
+
+    assert client.get("/api/client-requests", headers=other_headers).json() == []
+    mine = client.get("/api/client-requests", headers=instructor_headers).json()
+    assert len(mine) == 1
+    assert mine[0]["customer_name"] == "Test Customer"
+
+
+def test_rebook_confirms_normally(client, customer_auth_headers):
+    instructor_token = signup_instructor_with_specialty(client, email="rebook_confirm@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    first = client.post("/api/customer/bookings", json=_payload(), headers=customer_auth_headers).json()
+    client.put(f"/api/client-requests/bookings/{first['id']}/confirm", headers=instructor_headers)
+    instructor_id = client.get("/api/customer/bookings", headers=customer_auth_headers).json()[0]["instructor"]["id"]
+
+    rebook = client.post(
+        "/api/customer/bookings", json=_payload(preferred_instructor_id=instructor_id), headers=customer_auth_headers,
+    ).json()
+    confirmed = client.put(f"/api/client-requests/bookings/{rebook['id']}/confirm", headers=instructor_headers)
+    assert confirmed.status_code == 200
+    assert confirmed.json()["customer_email"] == "customer@example.com"
+
+
+def test_rebook_rejected_when_instructor_no_longer_offers_specialty(client, customer_auth_headers):
+    instructor_token = signup_instructor_with_specialty(client, email="rebook_dropped@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    first = client.post("/api/customer/bookings", json=_payload(), headers=customer_auth_headers).json()
+    client.put(f"/api/client-requests/bookings/{first['id']}/confirm", headers=instructor_headers)
+    instructor_id = client.get("/api/customer/bookings", headers=customer_auth_headers).json()[0]["instructor"]["id"]
+
+    client.put("/api/profile", json={"specialty": "sound_bath"}, headers=instructor_headers)
+
+    res = client.post(
+        "/api/customer/bookings", json=_payload(preferred_instructor_id=instructor_id), headers=customer_auth_headers,
+    )
+    assert res.status_code == 400
+
+
+def test_rebook_rejected_when_instructor_inactive(client, customer_auth_headers):
+    instructor_token = signup_instructor_with_specialty(client, email="rebook_inactive@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    first = client.post("/api/customer/bookings", json=_payload(), headers=customer_auth_headers).json()
+    client.put(f"/api/client-requests/bookings/{first['id']}/confirm", headers=instructor_headers)
+    instructor_id = client.get("/api/customer/bookings", headers=customer_auth_headers).json()[0]["instructor"]["id"]
+
+    client.put("/api/profile", json={"active": False}, headers=instructor_headers)
+
+    res = client.post(
+        "/api/customer/bookings", json=_payload(preferred_instructor_id=instructor_id), headers=customer_auth_headers,
+    )
+    assert res.status_code == 400
+
+
+def test_rebook_rejected_for_unknown_instructor_id(client, customer_auth_headers):
+    res = client.post(
+        "/api/customer/bookings", json=_payload(preferred_instructor_id=999999), headers=customer_auth_headers,
+    )
+    assert res.status_code == 400

@@ -68,6 +68,31 @@ def _any_active_instructor_can_fulfill(
     return False
 
 
+def _validate_preferred_instructor(
+    db: Session, instructor_id: int, specialty: str,
+    requested_day: int, requested_start: str, requested_end: str, duration_minutes: int,
+) -> None:
+    """Same "fail fast with a 400" reasoning as bookings.py's version —
+    a targeted rebook that can't work should tell the customer to try a
+    regular request instead, not silently land as "unmatched"."""
+    instructor = db.query(models.Instructor).filter(models.Instructor.id == instructor_id).first()
+    if (
+        not instructor
+        or not instructor.active
+        or specialty not in [s.strip() for s in (instructor.specialty or "").split(",") if s.strip()]
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="This instructor can't currently take this request — try a regular request instead.",
+        )
+    blocks = [(b.day_of_week, b.start_time, b.end_time) for b in instructor.availability_blocks]
+    if has_overlap(requested_day, requested_start, requested_end, duration_minutes, blocks) is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This instructor doesn't have that time open — try a different day/time or a regular request instead.",
+        )
+
+
 @router.post("", response_model=schemas.LessonRequestOut, status_code=201)
 def create_lesson_request(
     payload: schemas.LessonRequestCreate,
@@ -85,6 +110,11 @@ def create_lesson_request(
     city = geo.CITY_BY_NAME.get(payload.city)
     if not city:
         raise HTTPException(status_code=400, detail="Unknown city.")
+    if payload.preferred_instructor_id is not None:
+        _validate_preferred_instructor(
+            db, payload.preferred_instructor_id, payload.specialty,
+            payload.requested_day, payload.requested_start_time, payload.requested_end_time, payload.duration_minutes,
+        )
 
     _mock_charge(payload.card_number, payload.card_expiry, payload.card_cvc)
 
@@ -92,7 +122,7 @@ def create_lesson_request(
     customer.longitude = city["lng"]
 
     price = DURATION_PRICING[payload.duration_minutes]
-    has_any_candidate = _any_active_instructor_can_fulfill(
+    has_any_candidate = payload.preferred_instructor_id is not None or _any_active_instructor_can_fulfill(
         db, payload.specialty, payload.requested_day,
         payload.requested_start_time, payload.requested_end_time, payload.duration_minutes,
     )
@@ -100,6 +130,7 @@ def create_lesson_request(
     lesson_request = models.LessonRequest(
         customer_id=customer.id,
         instructor_id=None,
+        preferred_instructor_id=payload.preferred_instructor_id,
         specialty=payload.specialty,
         duration_minutes=payload.duration_minutes,
         amount_paid=price,

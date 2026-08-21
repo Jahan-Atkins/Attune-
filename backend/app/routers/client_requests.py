@@ -38,6 +38,8 @@ def _my_specialties(instructor: models.Instructor) -> List[str]:
 def _instructor_sees_booking(instructor: models.Instructor, booking: models.Booking) -> bool:
     if not instructor.active:
         return False
+    if booking.preferred_instructor_id is not None and booking.preferred_instructor_id != instructor.id:
+        return False
     if booking.specialty not in _my_specialties(instructor):
         return False
     customer = booking.customer
@@ -49,6 +51,8 @@ def _instructor_sees_booking(instructor: models.Instructor, booking: models.Book
 
 def _instructor_sees_lesson_request(instructor: models.Instructor, lesson_request: models.LessonRequest) -> bool:
     if not instructor.active:
+        return False
+    if lesson_request.preferred_instructor_id is not None and lesson_request.preferred_instructor_id != instructor.id:
         return False
     if lesson_request.specialty not in _my_specialties(instructor):
         return False
