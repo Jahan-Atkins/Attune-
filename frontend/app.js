@@ -426,6 +426,11 @@ function renderClientDetail(c) {
   const rateEl = document.getElementById('cd-per-session-rate');
   rateEl.textContent = c.sessions_total ? `Get paid $${(c.amount_total / c.sessions_total).toFixed(0)} per session` : '';
 
+  const deleteBtn = document.getElementById('cd-delete-btn');
+  deleteBtn.textContent = c.deletion_pending ? 'Pending' : 'Delete';
+  deleteBtn.disabled = c.deletion_pending;
+  deleteBtn.classList.toggle('pending', c.deletion_pending);
+
   const contactEl = document.getElementById('cd-contact-block');
   if (c.email || c.phone) {
     contactEl.innerHTML = `
@@ -489,13 +494,12 @@ function editClientFromDetail() {
 
 async function deleteClientFromDetail() {
   if (!currentClientDetailId) return;
-  if (!confirm("Delete this client? This can't be undone.")) return;
+  if (!confirm("Request deletion of this client? An admin needs to approve it before the client is actually removed.")) return;
   try {
     await apiFetch(`/api/clients/${currentClientDetailId}`, { method: 'DELETE' });
-    await Promise.all([loadClients('current'), loadClients('past'), loadSummary()]);
-    goToScreen('clients');
+    await openClientDetail(currentClientDetailId); // stays on the page — the client isn't gone yet, just pending
   } catch (err) {
-    alert(err.message || 'Could not delete client.');
+    alert(err.message || 'Could not request deletion.');
   }
 }
 

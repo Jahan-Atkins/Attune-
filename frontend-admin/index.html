@@ -17,6 +17,7 @@
     <button class="nav-link" onclick="openInstructors()">Instructors</button>
     <button class="nav-link" onclick="openCustomers()">Customers</button>
     <button class="nav-link" onclick="openRequests()">Requests</button>
+    <button class="nav-link" onclick="openDeletionRequests()">Client Deletions</button>
     <button class="nav-link" onclick="openFaqs()">FAQs</button>
     <button class="nav-link" onclick="logout()">Log Out</button>
   </nav>
@@ -94,6 +95,13 @@
       </select>
     </div>
     <div id="requests-list" class="admin-list"></div>
+  </section>
+
+  <!-- ============ CLIENT DELETION REQUESTS ============ -->
+  <section class="screen" id="screen-deletions">
+    <h2 class="step-title">Client deletion requests</h2>
+    <p class="card-sub" style="text-align:left; margin-bottom:18px;">An instructor can no longer delete a client directly — every request lands here first.</p>
+    <div id="deletions-list" class="admin-list"></div>
   </section>
 
   <!-- ============ FAQS ============ -->

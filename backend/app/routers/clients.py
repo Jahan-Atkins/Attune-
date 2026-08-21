@@ -75,16 +75,36 @@ def update_client(
     return client
 
 
-@router.delete("/{client_id}", status_code=204)
+def deletion_request_out(request: models.ClientDeletionRequest) -> schemas.ClientDeletionRequestOut:
+    return schemas.ClientDeletionRequestOut(
+        id=request.id,
+        client_id=request.client_id,
+        client_name=request.client.name,
+        instructor_name=request.instructor.name,
+        requested_at=request.requested_at,
+    )
+
+
+@router.delete("/{client_id}", response_model=schemas.ClientDeletionRequestOut, status_code=202)
 def delete_client(
     client_id: int,
     db: Session = Depends(get_db),
     instructor: models.Instructor = Depends(get_current_instructor),
 ):
+    """No longer deletes anything directly — an instructor can't remove a
+    client unilaterally. This queues a ClientDeletionRequest for an admin
+    to approve or deny (see routers/admin.py); the actual deletion, if
+    any, happens there. Calling this again while one's already pending
+    just returns the existing request instead of creating a duplicate."""
     client = _get_owned_client(client_id, db, instructor)
-    db.delete(client)
+    existing = db.query(models.ClientDeletionRequest).filter(models.ClientDeletionRequest.client_id == client.id).first()
+    if existing:
+        return deletion_request_out(existing)
+    request = models.ClientDeletionRequest(client_id=client.id, instructor_id=instructor.id)
+    db.add(request)
     db.commit()
-    return None
+    db.refresh(request)
+    return deletion_request_out(request)
 
 
 @router.post("/{client_id}/lessons", response_model=schemas.ClientLessonOut, status_code=201)

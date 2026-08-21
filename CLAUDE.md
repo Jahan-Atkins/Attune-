@@ -104,6 +104,15 @@ Check the relevant one before assuming a feature doesn't exist yet.
   arrives. Same reasoning as the instructor-scoping rule above: don't
   let a client's belief about what it's allowed to do stand in for a
   server-side check.
+- **An instructor can't delete a `Client` outright.** `DELETE /api/clients/{id}`
+  no longer deletes anything — it creates a `ClientDeletionRequest` (or
+  returns the existing pending one) and returns 202, not 204. Only an
+  admin's approve (`PUT /api/admin/client-deletion-requests/{id}/approve`)
+  actually deletes the client (cascading to their lessons); deny just
+  clears the request. `Client.deletion_pending` reflects the state to the
+  frontend, which shows "Pending" on the Delete button instead of the
+  normal label while one exists. Don't reintroduce a direct-delete path
+  for instructors — that's the entire point of this workflow.
 - No card details are ever persisted, in either flow. `_mock_charge()` in
   `bookings.py` validates format only and returns; nothing about the
   card is written to the database. "Charging" at confirm time is just
@@ -162,7 +171,7 @@ alembic upgrade head
 python seed.py           # see logins below
 python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 176 tests in backend/tests/ — run after any route change
+pytest                    # 190 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000

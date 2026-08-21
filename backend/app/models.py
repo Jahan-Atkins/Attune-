@@ -127,6 +127,16 @@ class Client(Base):
 
     instructor = relationship("Instructor", back_populates="clients")
     lessons = relationship("ClientLesson", back_populates="client", cascade="all, delete-orphan", order_by="ClientLesson.lesson_number")
+    deletion_requests = relationship("ClientDeletionRequest", back_populates="client", cascade="all, delete-orphan")
+
+    @property
+    def deletion_pending(self):
+        """A row existing in client_deletion_requests *is* "pending" — see
+        that model's docstring for why there's no separate status column."""
+        session = object_session(self)
+        if session is None:
+            return False
+        return session.query(ClientDeletionRequest).filter(ClientDeletionRequest.client_id == self.id).first() is not None
 
 
 class ClientLesson(Base):
@@ -147,6 +157,31 @@ class ClientLesson(Base):
     paid = Column(Boolean, default=False)
 
     client = relationship("Client", back_populates="lessons")
+
+
+class ClientDeletionRequest(Base):
+    """
+    An instructor can no longer delete a Client outright — see
+    routers/clients.py's delete_client, which now creates one of these
+    instead of actually deleting anything. Only an admin's approve
+    (routers/admin.py) performs the real deletion.
+
+    Deliberately no `status` column: this table only ever holds *pending*
+    requests. Resolving one (approve or deny) deletes the row — approve
+    deletes the Client too, deny just clears the request and the Client
+    stays. There's no history kept past that point, on purpose, matching
+    the "no audit log" boundary already set for the admin side in
+    PLATFORM-EXPANSION-ROADMAP.md Part 7.
+    """
+    __tablename__ = "client_deletion_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    instructor_id = Column(Integer, ForeignKey("instructors.id"), nullable=False)
+    requested_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    client = relationship("Client", back_populates="deletion_requests")
+    instructor = relationship("Instructor")
 
 
 class SessionListing(Base):

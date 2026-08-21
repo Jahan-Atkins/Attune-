@@ -58,15 +58,34 @@ def test_update_client(client, auth_headers):
     assert update_res.json()["sessions_completed"] == 4
 
 
-def test_delete_client(client, auth_headers):
+def test_delete_client_creates_a_pending_request_instead_of_deleting(client, auth_headers):
     create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
     client_id = create_res.json()["id"]
 
     delete_res = client.delete(f"/api/clients/{client_id}", headers=auth_headers)
-    assert delete_res.status_code == 204
+    assert delete_res.status_code == 202
+    assert delete_res.json()["client_id"] == client_id
 
     get_res = client.get(f"/api/clients/{client_id}", headers=auth_headers)
-    assert get_res.status_code == 404
+    assert get_res.status_code == 200
+    assert get_res.json()["deletion_pending"] is True
+
+
+def test_delete_client_is_idempotent_while_pending(client, auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+
+    first = client.delete(f"/api/clients/{client_id}", headers=auth_headers)
+    second = client.delete(f"/api/clients/{client_id}", headers=auth_headers)
+    assert first.json()["id"] == second.json()["id"]
+
+
+def test_cannot_request_deletion_of_another_instructors_client(client, auth_headers, second_auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+
+    res = client.delete(f"/api/clients/{client_id}", headers=second_auth_headers)
+    assert res.status_code == 404
 
 
 def test_client_details_fields_persist(client, auth_headers):
@@ -186,7 +205,10 @@ def test_cannot_add_lesson_to_another_instructors_client(client, auth_headers, s
     assert res.status_code == 404
 
 
-def test_deleting_client_cascades_to_its_lessons(client, auth_headers):
+def test_requesting_deletion_of_a_client_with_lessons_does_not_delete_anything(client, auth_headers):
+    """The actual cascade-delete-on-approve behavior is covered in
+    test_admin.py — an instructor's own DELETE call never deletes
+    anything anymore, lessons included."""
     create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
     client_id = create_res.json()["id"]
     client.post(
@@ -196,6 +218,7 @@ def test_deleting_client_cascades_to_its_lessons(client, auth_headers):
     )
 
     delete_res = client.delete(f"/api/clients/{client_id}", headers=auth_headers)
-    assert delete_res.status_code == 204
-    # No direct way to query orphaned lessons via the API — the absence of
-    # a 500 here (a real FK violation would raise one) is the assertion.
+    assert delete_res.status_code == 202
+
+    get_res = client.get(f"/api/clients/{client_id}", headers=auth_headers)
+    assert len(get_res.json()["lessons"]) == 1

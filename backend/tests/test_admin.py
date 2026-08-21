@@ -216,3 +216,82 @@ def test_metrics_shape_and_counts(client, customer_auth_headers, admin_auth_head
     assert body["total_customers"] >= 1
     assert "pending" in body["bookings_by_status"] or "matched" in body["bookings_by_status"]
     assert body["match_rate_30d"] is None or 0 <= body["match_rate_30d"] <= 1
+
+
+# ---- client deletion requests ----
+
+CLIENT_PAYLOAD = {"name": "Rosa Klein", "initials": "RK", "avatar_variant": "c1"}
+
+
+def test_deletion_requests_require_admin_auth(client, auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+    client.delete(f"/api/clients/{client_id}", headers=auth_headers)
+
+    assert client.get("/api/admin/client-deletion-requests").status_code == 401
+    assert client.get("/api/admin/client-deletion-requests", headers=auth_headers).status_code == 401
+
+
+def test_list_shows_client_and_instructor_names(client, auth_headers, admin_auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+    client.delete(f"/api/clients/{client_id}", headers=auth_headers)
+
+    res = client.get("/api/admin/client-deletion-requests", headers=admin_auth_headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body) == 1
+    assert body[0]["client_name"] == "Rosa Klein"
+    assert body[0]["instructor_name"] == "Test Instructor"
+
+
+def test_approve_deletes_client_and_cascades_lessons(client, auth_headers, admin_auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+    client.post(
+        f"/api/clients/{client_id}/lessons", json={"lesson_number": 1, "date": "07/09/2026", "paid": True},
+        headers=auth_headers,
+    )
+    request_id = client.delete(f"/api/clients/{client_id}", headers=auth_headers).json()["id"]
+
+    res = client.put(f"/api/admin/client-deletion-requests/{request_id}/approve", headers=admin_auth_headers)
+    assert res.status_code == 200
+    assert res.json()["client_name"] == "Rosa Klein"
+
+    assert client.get(f"/api/clients/{client_id}", headers=auth_headers).status_code == 404
+    assert client.get("/api/admin/client-deletion-requests", headers=admin_auth_headers).json() == []
+
+
+def test_deny_keeps_client_and_clears_pending_state(client, auth_headers, admin_auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+    request_id = client.delete(f"/api/clients/{client_id}", headers=auth_headers).json()["id"]
+
+    res = client.put(f"/api/admin/client-deletion-requests/{request_id}/deny", headers=admin_auth_headers)
+    assert res.status_code == 200
+
+    get_res = client.get(f"/api/clients/{client_id}", headers=auth_headers)
+    assert get_res.status_code == 200
+    assert get_res.json()["deletion_pending"] is False
+    assert client.get("/api/admin/client-deletion-requests", headers=admin_auth_headers).json() == []
+
+
+def test_can_request_deletion_again_after_a_denial(client, auth_headers, admin_auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+    request_id = client.delete(f"/api/clients/{client_id}", headers=auth_headers).json()["id"]
+    client.put(f"/api/admin/client-deletion-requests/{request_id}/deny", headers=admin_auth_headers)
+
+    second = client.delete(f"/api/clients/{client_id}", headers=auth_headers)
+    assert second.status_code == 202
+    assert client.get(f"/api/clients/{client_id}", headers=auth_headers).json()["deletion_pending"] is True
+
+
+def test_approve_404_for_unknown_request(client, admin_auth_headers):
+    res = client.put("/api/admin/client-deletion-requests/999999/approve", headers=admin_auth_headers)
+    assert res.status_code == 404
+
+
+def test_deny_404_for_unknown_request(client, admin_auth_headers):
+    res = client.put("/api/admin/client-deletion-requests/999999/deny", headers=admin_auth_headers)
+    assert res.status_code == 404

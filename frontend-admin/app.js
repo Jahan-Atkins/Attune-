@@ -334,6 +334,61 @@ async function forceCancelLessonRequest(id) {
 }
 
 /* =========================================================
+   CLIENT DELETION REQUESTS
+   ========================================================= */
+async function openDeletionRequests() {
+  goToScreen('deletions');
+  await loadDeletionRequests();
+}
+
+async function loadDeletionRequests() {
+  const listEl = document.getElementById('deletions-list');
+  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
+  try {
+    const requests = await apiFetch('/api/admin/client-deletion-requests');
+    listEl.innerHTML = requests.length
+      ? requests.map(deletionRequestRowHTML).join('')
+      : '<p class="empty-copy">No pending deletion requests.</p>';
+  } catch (err) {
+    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function deletionRequestRowHTML(r) {
+  const dateStr = r.requested_at ? new Date(r.requested_at).toLocaleDateString() : '';
+  return `
+    <div class="admin-row">
+      <div class="admin-row-main">
+        <p class="admin-row-title">${escapeHtml(r.client_name)}</p>
+        <p class="admin-row-meta">Requested by ${escapeHtml(r.instructor_name)} · ${escapeHtml(dateStr)}</p>
+      </div>
+      <div class="admin-row-actions">
+        <button class="btn btn-outline btn-sm" onclick="denyDeletion(${r.id})">Deny</button>
+        <button class="btn btn-danger btn-sm" onclick="approveDeletion(${r.id})">Approve</button>
+      </div>
+    </div>`;
+}
+
+async function approveDeletion(id) {
+  if (!confirm('Approve this deletion? The client (and their lesson history) will be permanently removed.')) return;
+  try {
+    await apiFetch(`/api/admin/client-deletion-requests/${id}/approve`, { method: 'PUT' });
+    await loadDeletionRequests();
+  } catch (err) {
+    alert(err.message || 'Could not approve this request.');
+  }
+}
+
+async function denyDeletion(id) {
+  try {
+    await apiFetch(`/api/admin/client-deletion-requests/${id}/deny`, { method: 'PUT' });
+    await loadDeletionRequests();
+  } catch (err) {
+    alert(err.message || 'Could not deny this request.');
+  }
+}
+
+/* =========================================================
    FAQS
    ========================================================= */
 async function openFaqs() {

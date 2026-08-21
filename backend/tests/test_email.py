@@ -4,7 +4,7 @@ why these are testable with plain capsys instead of mocking a provider:
 the only backend right now just prints, so asserting on stdout IS
 asserting on the behavior.
 """
-from .conftest import add_availability, signup_instructor_with_specialty
+from .conftest import add_availability, create_admin_and_login, signup_instructor_with_specialty
 
 CARD = {"card_name": "Jordan Lee", "card_number": "4242 4242 4242 4242", "card_expiry": "12/28", "card_cvc": "123"}
 TUESDAY = 1
@@ -123,3 +123,33 @@ def test_instructor_cancel_recurring_series_notifies_both_sides(client, customer
     assert "customer@example.com" in out
     assert "notify_series_instr_cancel@example.com" in out
     assert "cancelled" in out
+
+
+def test_approving_client_deletion_notifies_instructor(client, auth_headers, capsys):
+    admin_token = create_admin_and_login(client, email="notify_admin_approve@example.com")
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    client_res = client.post("/api/clients", json={"name": "Rosa Klein", "initials": "RK"}, headers=auth_headers)
+    request_id = client.delete(f"/api/clients/{client_res.json()['id']}", headers=auth_headers).json()["id"]
+
+    capsys.readouterr()
+    client.put(f"/api/admin/client-deletion-requests/{request_id}/approve", headers=admin_headers)
+    out = capsys.readouterr().out
+
+    assert "instructor@example.com" in out
+    assert "approved" in out
+    assert "Rosa Klein" in out
+
+
+def test_denying_client_deletion_notifies_instructor(client, auth_headers, capsys):
+    admin_token = create_admin_and_login(client, email="notify_admin_deny@example.com")
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    client_res = client.post("/api/clients", json={"name": "Rosa Klein", "initials": "RK"}, headers=auth_headers)
+    request_id = client.delete(f"/api/clients/{client_res.json()['id']}", headers=auth_headers).json()["id"]
+
+    capsys.readouterr()
+    client.put(f"/api/admin/client-deletion-requests/{request_id}/deny", headers=admin_headers)
+    out = capsys.readouterr().out
+
+    assert "instructor@example.com" in out
+    assert "denied" in out
+    assert "Rosa Klein" in out

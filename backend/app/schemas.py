@@ -61,6 +61,9 @@ class ClientOut(ClientBase):
     # via "+ Add Client"/"Edit Client". Lets the frontend look up whether
     # this client has an active RecurringSeries.
     customer_id: Optional[int] = None
+    # Also read-only, also computed — see Client.deletion_pending. True
+    # once the instructor has requested deletion, until an admin resolves it.
+    deletion_pending: bool = False
     lessons: List[ClientLessonOut] = []
     model_config = ConfigDict(from_attributes=True)
 
@@ -431,3 +434,11 @@ class MetricsOut(BaseModel):
     bookings_by_status: dict
     lesson_requests_by_status: dict
     match_rate_30d: Optional[float] = None  # confirmed / (confirmed + unmatched) over the last 30 days; None if no data at all
+
+
+class ClientDeletionRequestOut(BaseModel):
+    id: int
+    client_id: int
+    client_name: str
+    instructor_name: str
+    requested_at: datetime

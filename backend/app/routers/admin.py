@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..email import send_email
 from ..security import get_current_admin
+from .clients import deletion_request_out
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -279,3 +281,54 @@ def get_metrics(db: Session = Depends(get_db), admin: models.Admin = Depends(get
         lesson_requests_by_status=_counts_by_status(models.LessonRequest),
         match_rate_30d=match_rate,
     )
+
+
+# ---- Client deletion requests ----
+# An instructor can no longer delete a client outright (see
+# clients.py's delete_client) — every request lands here for an admin
+# to approve (really deletes the client) or deny (client stays, request
+# just goes away). Both notify the requesting instructor by email since
+# there's no other way for them to learn the outcome short of reopening
+# the Client Details page.
+
+@router.get("/client-deletion-requests", response_model=List[schemas.ClientDeletionRequestOut])
+def list_client_deletion_requests(db: Session = Depends(get_db), admin: models.Admin = Depends(get_current_admin)):
+    requests = db.query(models.ClientDeletionRequest).order_by(models.ClientDeletionRequest.id).all()
+    return [deletion_request_out(r) for r in requests]
+
+
+def _get_deletion_request(request_id: int, db: Session) -> models.ClientDeletionRequest:
+    request = db.query(models.ClientDeletionRequest).filter(models.ClientDeletionRequest.id == request_id).first()
+    if not request:
+        raise HTTPException(status_code=404, detail="Deletion request not found.")
+    return request
+
+
+@router.put("/client-deletion-requests/{request_id}/approve", response_model=schemas.ClientDeletionRequestOut)
+def approve_client_deletion(request_id: int, db: Session = Depends(get_db), admin: models.Admin = Depends(get_current_admin)):
+    request = _get_deletion_request(request_id, db)
+    out = deletion_request_out(request)  # built before the delete — the client won't be there to read from after
+    instructor_email = request.instructor.email
+    db.delete(request.client)  # cascades to lessons and the request row itself (Client.deletion_requests)
+    db.commit()
+    send_email(
+        to=instructor_email,
+        subject=f"Client deletion approved: {out.client_name}",
+        body=f"An admin approved your request to delete {out.client_name}. This client has been removed.",
+    )
+    return out
+
+
+@router.put("/client-deletion-requests/{request_id}/deny", response_model=schemas.ClientDeletionRequestOut)
+def deny_client_deletion(request_id: int, db: Session = Depends(get_db), admin: models.Admin = Depends(get_current_admin)):
+    request = _get_deletion_request(request_id, db)
+    out = deletion_request_out(request)
+    instructor_email = request.instructor.email
+    db.delete(request)
+    db.commit()
+    send_email(
+        to=instructor_email,
+        subject=f"Client deletion denied: {out.client_name}",
+        body=f"An admin denied your request to delete {out.client_name}. This client remains on your practice.",
+    )
+    return out
