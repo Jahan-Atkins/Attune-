@@ -18,7 +18,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.database import Base, engine
+from app.database import Base, engine, SessionLocal
+from app import models
+from app.security import hash_password
 
 
 @pytest.fixture(autouse=True)
@@ -104,3 +106,25 @@ def add_availability(client, headers, day_of_week, start_time, end_time):
     }, headers=headers)
     assert res.status_code == 201, res.text
     return res.json()
+
+
+def create_admin_and_login(client, email="admin@example.com", password="adminpass123", name="Test Admin"):
+    """There's no admin signup route on purpose (see models.Admin's
+    docstring) — the only way to get an admin account, in production or
+    in a test, is to insert one directly. Mirrors what create_admin.py
+    does interactively, minus the prompts."""
+    db = SessionLocal()
+    try:
+        db.add(models.Admin(name=name, email=email, hashed_password=hash_password(password)))
+        db.commit()
+    finally:
+        db.close()
+    res = client.post("/api/admin/auth/login", data={"username": email, "password": password})
+    assert res.status_code == 200, res.text
+    return res.json()["access_token"]
+
+
+@pytest.fixture
+def admin_auth_headers(client):
+    token = create_admin_and_login(client)
+    return {"Authorization": f"Bearer {token}"}

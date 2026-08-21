@@ -137,6 +137,11 @@ class ProfileUpdate(BaseModel):
 
 # ---- FAQ ----
 
+class FAQCreate(BaseModel):
+    question: str
+    category: str = "app use"  # "app use" | "payments" | "cancellations"
+
+
 class FAQOut(BaseModel):
     id: int
     question: str
@@ -337,3 +342,88 @@ class RecurringSeriesOut(BaseModel):
     customer_name: Optional[str] = None
     instructor: Optional[InstructorPublicOut] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---- Admin ----
+# A third role, alongside Instructor/Customer — see models.Admin and
+# security.get_current_admin. No AdminSignupRequest anywhere on purpose.
+
+class AdminLoginRequest(BaseModel):
+    """Not used directly — admin login goes through the same
+    OAuth2PasswordRequestForm as the other two account types (see
+    routers/admin_auth.py). Kept only as documentation of the shape."""
+    email: EmailStr
+    password: str
+
+
+class SuspendRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class InstructorAdminOut(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+    phone: str
+    specialty: str
+    active: bool
+    suspended: bool
+    suspension_reason: Optional[str] = None
+    city: Optional[str] = None
+    average_rating: Optional[float] = None
+    review_count: int = 0
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerAdminOut(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+    phone: str
+    suspended: bool
+    suspension_reason: Optional[str] = None
+    city: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Admin list views need to see both sides of a request at a glance
+# (which customer, which instructor) — neither BookingOut nor
+# LessonRequestOut carries the customer's name, and InstructorPublicOut
+# is nested rather than flat, so these are separate, admin-specific
+# shapes built by the router rather than reusing the customer-facing ones.
+
+class BookingAdminOut(BaseModel):
+    id: int
+    customer_name: str
+    instructor_name: Optional[str] = None
+    specialty: str
+    package: str
+    amount_paid: float
+    paid: bool
+    status: str
+    created_at: Optional[datetime] = None
+
+
+class LessonRequestAdminOut(BaseModel):
+    id: int
+    customer_name: str
+    instructor_name: Optional[str] = None
+    specialty: str
+    duration_minutes: int
+    amount_paid: float
+    paid: bool
+    status: str
+    requested_day: int
+    requested_start_time: str
+    requested_end_time: str
+    created_at: Optional[datetime] = None
+
+
+class MetricsOut(BaseModel):
+    total_instructors: int
+    active_instructors: int
+    total_customers: int
+    active_customers: int
+    bookings_by_status: dict
+    lesson_requests_by_status: dict
+    match_rate_30d: Optional[float] = None  # confirmed / (confirmed + unmatched) over the last 30 days; None if no data at all

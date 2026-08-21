@@ -2,9 +2,14 @@
 
 A gig-work marketplace concept for yoga & sound bath instructors, built as a
 learning project: one FastAPI backend with real auth and a database,
-serving **two** frontends — an instructor app (sessions, clients, profile,
-resource library) and a customer app (sign up, request a package or a
-scheduled lesson, and get matched once an instructor confirms).
+serving **three** frontends — an instructor app (sessions, clients, profile,
+reviews, recurring bookings, resource library), a customer app (sign up,
+request a package or a scheduled lesson, get matched once an instructor
+confirms, leave a review, rebook, or set up a standing weekly booking),
+and an admin app (platform-wide metrics, suspending accounts,
+force-cancelling requests, FAQ CRUD — see `PLATFORM-EXPANSION-ROADMAP.md`
+Part 7 for how that one's account creation deliberately has no public
+signup route).
 
 ## Live demo
 
@@ -14,6 +19,8 @@ scheduled lesson, and get matched once an instructor confirms).
 - **Customer app:** https://attune-q29q.onrender.com/customer — click
   "Get Started" to sign up and send a request (see "How the pieces
   connect" below for why that isn't instant)
+- **Admin app:** https://attune-q29q.onrender.com/admin — no public signup;
+  an account has to be created with `backend/create_admin.py` first
 - **API docs:** https://attune-q29q.onrender.com/docs
 
 Note: this is Render's free tier, which spins the server down after
@@ -60,6 +67,10 @@ attune-app/
 │   └── app.js                 # auth, fetch() calls, all CRUD form logic
 ├── frontend-customer/         # customer app — served at /customer
 │   ├── index.html             # landing → auth → specialty → package-or-schedule → request sent
+│   ├── style.css
+│   └── app.js
+├── frontend-admin/            # admin app — served at /admin, no public signup
+│   ├── index.html             # login → dashboard/instructors/customers/requests/faqs
 │   ├── style.css
 │   └── app.js
 ├── .vscode/launch.json        # debug configs for the server and the test suite

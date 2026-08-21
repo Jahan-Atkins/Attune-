@@ -39,6 +39,12 @@ class Instructor(Base):
     longitude = Column(Float, nullable=True)
     max_travel_distance_km = Column(Float, nullable=True)  # null = no limit
 
+    # Platform-controlled, unlike `active` (which the instructor toggles
+    # themselves — "I'm choosing not to accept new clients right now").
+    # An instructor can't flip this on themselves; only an admin can.
+    suspended = Column(Boolean, default=False)
+    suspension_reason = Column(Text, nullable=True)
+
     clients = relationship("Client", back_populates="instructor", cascade="all, delete-orphan")
     requested_sessions = relationship("SessionListing", back_populates="requested_by")
     # foreign_keys= is required on both of these now that Booking/LessonRequest
@@ -197,6 +203,10 @@ class Customer(Base):
     hashed_password = Column(String, nullable=False)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+
+    # Same platform-controlled suspension as Instructor above.
+    suspended = Column(Boolean, default=False)
+    suspension_reason = Column(Text, nullable=True)
 
     bookings = relationship("Booking", back_populates="customer", cascade="all, delete-orphan")
     lesson_requests = relationship("LessonRequest", back_populates="customer", cascade="all, delete-orphan")
@@ -394,3 +404,23 @@ class Review(Base):
     @property
     def customer_name(self):
         return self.customer.name if self.customer else None
+
+
+class Admin(Base):
+    """
+    A third account type, alongside Instructor and Customer — see
+    security.py for the matching third JWT `type` claim. Deliberately
+    has **no public signup route anywhere**: unlike the other two, an
+    admin account is never created by hitting an API endpoint from the
+    outside. It only ever comes from running create_admin.py locally
+    against DATABASE_URL (same way seed.py already is), which closes off
+    the obvious attack of someone hitting a hypothetical
+    /api/admin/auth/signup and handing themselves admin access.
+    """
+    __tablename__ = "admins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attune — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topnav">
+  <a class="wordmark" href="#" onclick="goToScreen('dashboard'); return false;">Attune <span class="admin-badge">Admin</span></a>
+  <nav id="nav-actions" style="display:none;">
+    <button class="nav-link" onclick="openDashboard()">Dashboard</button>
+    <button class="nav-link" onclick="openInstructors()">Instructors</button>
+    <button class="nav-link" onclick="openCustomers()">Customers</button>
+    <button class="nav-link" onclick="openRequests()">Requests</button>
+    <button class="nav-link" onclick="openFaqs()">FAQs</button>
+    <button class="nav-link" onclick="logout()">Log Out</button>
+  </nav>
+</header>
+
+<main class="page">
+
+  <!-- ============ LOGIN ============ -->
+  <section class="screen active" id="screen-login">
+    <div class="card wizard-card">
+      <h2 class="card-title">Admin Log In</h2>
+      <p class="card-sub">Restricted access. Accounts are created via create_admin.py, not signed up here.</p>
+      <div id="login-error" class="form-error" style="display:none;"></div>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <label class="field-label">Email</label>
+        <input class="field-input" type="email" id="login-email" required>
+        <label class="field-label">Password</label>
+        <input class="field-input" type="password" id="login-password" required>
+        <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;">Log In</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ DASHBOARD ============ -->
+  <section class="screen" id="screen-dashboard">
+    <h2 class="step-title">Dashboard</h2>
+    <div id="metrics-grid" class="metrics-grid"></div>
+  </section>
+
+  <!-- ============ INSTRUCTORS ============ -->
+  <section class="screen" id="screen-instructors">
+    <h2 class="step-title">Instructors</h2>
+    <div class="filter-row">
+      <select class="field-select" id="instructor-filter-active" onchange="loadInstructors()">
+        <option value="">All active states</option>
+        <option value="true">Active only</option>
+        <option value="false">Inactive only</option>
+      </select>
+      <select class="field-select" id="instructor-filter-suspended" onchange="loadInstructors()">
+        <option value="">All standing</option>
+        <option value="false">Not suspended</option>
+        <option value="true">Suspended only</option>
+      </select>
+    </div>
+    <div id="instructors-list" class="admin-list"></div>
+  </section>
+
+  <!-- ============ CUSTOMERS ============ -->
+  <section class="screen" id="screen-customers">
+    <h2 class="step-title">Customers</h2>
+    <div class="filter-row">
+      <select class="field-select" id="customer-filter-suspended" onchange="loadCustomers()">
+        <option value="">All standing</option>
+        <option value="false">Not suspended</option>
+        <option value="true">Suspended only</option>
+      </select>
+    </div>
+    <div id="customers-list" class="admin-list"></div>
+  </section>
+
+  <!-- ============ REQUESTS (bookings + lesson requests) ============ -->
+  <section class="screen" id="screen-requests">
+    <h2 class="step-title">Requests</h2>
+    <div class="subtabs">
+      <button class="subtab active" id="requests-tab-package" onclick="setRequestsTab('package')">Packages</button>
+      <button class="subtab" id="requests-tab-schedule" onclick="setRequestsTab('schedule')">Scheduled Lessons</button>
+    </div>
+    <div class="filter-row">
+      <select class="field-select" id="requests-filter-status" onchange="loadRequests()">
+        <option value="">All statuses</option>
+        <option value="pending">Pending</option>
+        <option value="matched">Matched</option>
+        <option value="unmatched">Unmatched</option>
+        <option value="cancelled_by_admin">Cancelled by admin</option>
+      </select>
+    </div>
+    <div id="requests-list" class="admin-list"></div>
+  </section>
+
+  <!-- ============ FAQS ============ -->
+  <section class="screen" id="screen-faqs">
+    <h2 class="step-title">FAQs</h2>
+    <button class="btn btn-outline" onclick="openFaqForm()">+ Add FAQ</button>
+    <div id="faq-form-block" style="display:none; margin-top:16px;"></div>
+    <div id="faqs-list" class="admin-list" style="margin-top:16px;"></div>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,8 +1,9 @@
 # Platform expansion — admin, reviews, recurring bookings, rebooking, notifications, contact exchange
 
-**Status: Parts 1-3 ✅ done (contact exchange, history, reviews/ratings).
-Parts 4-7 (rebooking, recurring bookings, notifications, admin) not yet
-started.**
+**Status: all seven parts ✅ done** — contact exchange, history,
+reviews/ratings, rebooking, recurring bookings, notifications, and the
+admin side. See each part's section below for what shipped and where it
+deviated from the original plan.
 
 Planning document only — nothing here is built yet. Written at the same
 level of detail as the roadmaps that preceded it (`SCHEDULING-ROADMAP.md`,
@@ -417,7 +418,31 @@ manually patch in whatever columns `create_all()` skipped before
 
 ---
 
-## Part 7 — Admin side
+## Part 7 — Admin side ✅ done
+
+Built as designed below, with two additions:
+
+- `Instructor`/`Customer` matching code needed an explicit
+  `.filter(Instructor.suspended.is_(False))` fix: adding `suspended` as
+  a bare `nullable=True` column (what autogenerate proposed) would have
+  meant every *existing* instructor got `suspended = NULL` after the
+  migration, and `NULL IS FALSE` is `FALSE` in SQL — so they'd have
+  silently vanished from every broadcast/matching query. Fixed with
+  `nullable=False, server_default=false()`, the same pattern already
+  used for `paid` in `cd44acd0a348`.
+- The instructor/customer suspend actions use an inline reason field on
+  the row, not `prompt()` — a first pass used `prompt()` and it does
+  work in a real browser, but it's a cruder pattern than the rest of
+  this admin UI (the FAQ form is already a proper inline form) and
+  doesn't degrade gracefully in an automated/embedded browser context.
+  Switched before it shipped.
+
+Verified end-to-end in-browser: logged in, suspended an instructor with
+a reason (and confirmed it disappeared from that specialty's broadcast
+matching), listed/filtered instructors, customers, and requests,
+force-cancelled a booking, and created an FAQ. 19 new tests in
+`test_admin.py`. Explicitly not built, per the original plan: 2FA,
+an audit log, and admin-initiated password resets.
 
 Broader in kind than Parts 1-6: this isn't a customer/instructor-facing
 feature, it's an entirely new role with its own auth, its own frontend,

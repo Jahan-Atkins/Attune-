@@ -5,13 +5,13 @@ Everything auth-related lives here so it's easy to find in one place:
 - FastAPI dependencies that any route can request to find out who's
   logged in: get_current_instructor and get_current_customer
 
-There are now two kinds of accounts — Instructor and Customer — sharing
-one auth scheme. A token carries a "type" claim ("instructor" or
-"customer") so a customer's token can never be used to call an
-instructor-only route, even though both are just JWTs signed with the
-same SECRET_KEY. Skipping that check would be a real, exploitable bug —
-this is a good example of why "is the token valid" and "is the token
-allowed *here*" are two different questions.
+There are now three kinds of accounts — Instructor, Customer, and Admin
+— sharing one auth scheme. A token carries a "type" claim ("instructor",
+"customer", or "admin") so a customer's token can never be used to call
+an instructor-only route (or an admin-only one), even though all three
+are just JWTs signed with the same SECRET_KEY. Skipping that check would
+be a real, exploitable bug — this is a good example of why "is the token
+valid" and "is the token allowed *here*" are two different questions.
 """
 import os
 from datetime import datetime, timedelta, timezone
@@ -34,10 +34,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # a week, generous for a learning pro
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Two separate schemes so /docs shows two separate "Authorize" flows —
-# purely a docs/UX nicety, both produce identically-shaped JWTs.
+# Separate schemes so /docs shows separate "Authorize" flows per account
+# type — purely a docs/UX nicety, all three produce identically-shaped JWTs.
 oauth2_scheme_instructor = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 oauth2_scheme_customer = OAuth2PasswordBearer(tokenUrl="/api/customer/auth/login")
+oauth2_scheme_admin = OAuth2PasswordBearer(tokenUrl="/api/admin/auth/login")
 
 
 def hash_password(plain_password: str) -> str:
@@ -94,3 +95,16 @@ def get_current_customer(
     if customer is None:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
     return customer
+
+
+def get_current_admin(
+    token: str = Depends(oauth2_scheme_admin),
+    db: Session = Depends(get_db),
+) -> models.Admin:
+    """Same idea again, for admin-only routes. There's no public signup
+    for this account type — see models.Admin's docstring."""
+    admin_id = _decode(token, expected_type="admin")
+    admin = db.query(models.Admin).filter(models.Admin.id == admin_id).first()
+    if admin is None:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    return admin

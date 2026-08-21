@@ -59,6 +59,7 @@ def _any_active_instructor_can_fulfill(
     candidates = (
         db.query(models.Instructor)
         .filter(models.Instructor.active.is_(True))
+        .filter(models.Instructor.suspended.is_(False))
         .filter(models.Instructor.specialty.contains(specialty))
         .all()
     )
@@ -80,6 +81,7 @@ def _validate_preferred_instructor(
     if (
         not instructor
         or not instructor.active
+        or instructor.suspended
         or specialty not in [s.strip() for s in (instructor.specialty or "").split(",") if s.strip()]
     ):
         raise HTTPException(

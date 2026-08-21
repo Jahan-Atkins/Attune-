@@ -5,9 +5,10 @@ App entrypoint. Run this with:
 
 ...from inside the backend/ folder.
 
-This one process now serves three things:
+This one process now serves four things:
 - the instructor app at              /
 - the customer signup/booking app at /customer
+- the admin app at                   /admin
 - the JSON API at                    /api/...
 That's a deliberate choice for a learning project — one deploy, one URL,
 no CORS setup needed between the pieces. A larger app would likely split
@@ -25,7 +26,7 @@ from sqlalchemy.orm import Session
 from . import geo, models, schemas
 from .database import engine, get_db
 from .security import get_current_instructor
-from .routers import auth, clients, sessions, profile, faqs, customer_auth, bookings, availability, lesson_requests, client_requests, reviews, recurring_series
+from .routers import auth, clients, sessions, profile, faqs, customer_auth, bookings, availability, lesson_requests, client_requests, reviews, recurring_series, admin_auth, admin
 
 # Creates all tables defined in models.py if they don't exist yet.
 # Once you're using Alembic day to day (see backend/alembic/), this
@@ -54,6 +55,8 @@ app.include_router(lesson_requests.router)
 app.include_router(client_requests.router)
 app.include_router(reviews.router)
 app.include_router(recurring_series.router)
+app.include_router(admin_auth.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/cities")
@@ -86,15 +89,22 @@ def get_summary(
 # StaticFiles mounts only serve index.html at a *trailing-slash* path
 # (/customer/), so the bare path people actually type (/customer) needs
 # an explicit redirect — registered before the mount so it's matched first.
+# Same story for /admin.
 @app.get("/customer", include_in_schema=False)
 def redirect_to_customer_app():
     return RedirectResponse(url="/customer/")
 
 
+@app.get("/admin", include_in_schema=False)
+def redirect_to_admin_app():
+    return RedirectResponse(url="/admin/")
+
+
 # Order matters: specific paths are registered before the root catch-all,
 # and FastAPI/Starlette matches routes in the order they were added — so
-# /api/... (above) and /customer (above) are always matched before the
-# "/" mount has a chance to swallow everything.
+# /api/... (above), /customer, and /admin (above) are always matched
+# before the "/" mount has a chance to swallow everything.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 app.mount("/customer", StaticFiles(directory=str(BASE_DIR / "frontend-customer"), html=True), name="customer-frontend")
+app.mount("/admin", StaticFiles(directory=str(BASE_DIR / "frontend-admin"), html=True), name="admin-frontend")
 app.mount("/", StaticFiles(directory=str(BASE_DIR / "frontend"), html=True), name="frontend")

@@ -61,6 +61,7 @@ def _any_active_instructor_offers(db: Session, specialty: str) -> bool:
     return (
         db.query(models.Instructor)
         .filter(models.Instructor.active.is_(True))
+        .filter(models.Instructor.suspended.is_(False))
         .filter(models.Instructor.specialty.contains(specialty))
         .first()
         is not None
@@ -79,6 +80,7 @@ def _validate_preferred_instructor(db: Session, instructor_id: int, specialty: s
     if (
         not instructor
         or not instructor.active
+        or instructor.suspended
         or specialty not in [s.strip() for s in (instructor.specialty or "").split(",") if s.strip()]
     ):
         raise HTTPException(

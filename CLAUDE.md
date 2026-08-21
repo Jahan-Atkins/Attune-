@@ -1,17 +1,20 @@
 # Attune — instructor + customer marketplace
 
-A learning project: one FastAPI + SQLAlchemy backend serving **two**
+A learning project: one FastAPI + SQLAlchemy backend serving **three**
 frontends from one process:
 
 - `frontend/` (served at `/`) — the instructor side: yoga & sound bath
-  instructors manage clients, session listings, their profile, and an
-  FAQ library.
+  instructors manage clients, session listings, their profile, reviews,
+  recurring bookings, and an FAQ library.
 - `frontend-customer/` (served at `/customer`) — the customer side:
   sign up, choose a package or a scheduled lesson, and send a request.
   Nothing is charged and no instructor is assigned until one of them
   confirms it (see `REQUEST-CONFIRM-ROADMAP.md`).
+- `frontend-admin/` (served at `/admin`) — the platform side: metrics,
+  instructor/customer suspension, force-cancelling requests, FAQ CRUD.
+  No signup route anywhere for this one — see the Admin section below.
 
-Both are vanilla HTML/CSS/JS, no build step, no framework.
+All three are vanilla HTML/CSS/JS, no build step, no framework.
 
 Full history and rationale for design decisions lives in `README.md`.
 Staged plans for what's not yet built, or records of what was:
@@ -26,10 +29,10 @@ Staged plans for what's not yet built, or records of what was:
 - `CLIENT-DETAILS-ROADMAP.md` — done. Filter/Sort on Open Sessions, and
   a full Client Details page (location, recurring availability,
   itemized lesson list) beyond the original simple client card.
-- `PLATFORM-EXPANSION-ROADMAP.md` — Parts 1-3 done (contact info
+- `PLATFORM-EXPANSION-ROADMAP.md` — all seven parts done: contact info
   exchange in place of in-app messaging, booking/lesson-request history,
-  reviews & ratings). Parts 4-7 (rebook same instructor, recurring
-  bookings, notifications, admin side) not yet started.
+  reviews & ratings, rebooking the same instructor, recurring weekly
+  bookings, email notifications, and the admin side.
 
 Check the relevant one before assuming a feature doesn't exist yet.
 
@@ -40,11 +43,27 @@ Check the relevant one before assuming a feature doesn't exist yet.
   (`.filter(models.Client.instructor_id == instructor.id)`) and match it
   exactly in any new route. A route that forgets this filter leaks one
   instructor's data to another.
-- **Instructor and customer tokens are not interchangeable.** JWTs carry
-  a `type` claim (`"instructor"` or `"customer"`, see `app/security.py`),
-  and `get_current_instructor` / `get_current_customer` each check it.
-  Never build a route that accepts either type unless that's genuinely
+- **Instructor, customer, and admin tokens are not interchangeable.**
+  JWTs carry a `type` claim (`"instructor"`, `"customer"`, or `"admin"`,
+  see `app/security.py`), and `get_current_instructor` /
+  `get_current_customer` / `get_current_admin` each check it. Never
+  build a route that accepts more than one type unless that's genuinely
   the intent — it almost never is.
+- **There is no admin signup route, anywhere, on purpose.** Unlike
+  instructor/customer, an `Admin` account is never created by hitting an
+  API endpoint — only by running `backend/create_admin.py` locally
+  against whichever `DATABASE_URL` you want the account on. Don't add
+  one to close a "convenience" gap; that gap is the whole point (closes
+  off the obvious attack of someone hitting a hypothetical
+  `/api/admin/auth/signup` and handing themselves admin access).
+- **`Instructor.active` (self-controlled) and `Instructor`/`Customer`
+  `.suspended` (admin-controlled) are different flags — check both.**
+  `active` is "I'm choosing not to accept new clients right now";
+  `suspended` is a platform action nobody but an admin can toggle. Every
+  matching/broadcast query that filters on `active` must also filter on
+  `not suspended` (see `bookings.py`, `lesson_requests.py`,
+  `client_requests.py`) — don't let a suspended instructor keep matching
+  just because a new route forgot the second check.
 - Schema changes go through Alembic, never by editing the database by
   hand or relying on `Base.metadata.create_all` alone:
   ```
@@ -109,6 +128,29 @@ Check the relevant one before assuming a feature doesn't exist yet.
   pattern as the existing `city` property and `ClientRequestOut.distance_km`.
   If you add another aggregate like this, follow the same pattern rather
   than caching it on the model.
+- **No cron job or background scheduler, anywhere, on purpose** — this
+  project deliberately avoids that infrastructure. `RecurringSeries`
+  occurrences are generated lazily, on read: `ensure_upcoming_occurrences()`
+  (`app/routers/recurring_series.py`) runs at the top of the read
+  endpoints that need to see them and backfills whatever's missing for
+  the next few weeks. A series nobody's checked on in months just falls
+  behind and catches up next time either side looks — that's accepted,
+  not a bug. Don't "fix" this by adding a scheduled task.
+- A `LessonRequest` row generated by a `RecurringSeries` is created
+  directly as `status="matched"`, `paid=True`, with `recurring_series_id`
+  and a real `occurrence_date` ("YYYY-MM-DD") set — it never goes through
+  the pending/broadcast/confirm lifecycle every other `LessonRequest`
+  does. `occurrence_date` is the *only* place this app stores a real
+  calendar date for a lesson; every other `LessonRequest` only ever
+  stores a day-of-week.
+- Email notifications (`app/email.py`) use plain `print()`, not the
+  `logging` module — deliberately. A `logger.info()` version passed
+  every test (pytest's `caplog` overrides the level) but was silently
+  invisible in the real running app, since nothing here configures
+  Python logging and the root logger defaults to WARNING. If you touch
+  `send_email()`, keep using `print()` (or fix logging configuration
+  project-wide first) — don't reintroduce a notification that looks like
+  it works but never actually shows up anywhere.
 
 ## Commands
 
@@ -118,12 +160,14 @@ python3 -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activ
 pip install -r requirements.txt
 alembic upgrade head
 python seed.py           # see logins below
+python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 129 tests in backend/tests/ — run after any route change
+pytest                    # 176 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
 Customer app: http://127.0.0.1:8000/customer
+Admin app: http://127.0.0.1:8000/admin (needs `create_admin.py` run first — no seeded account)
 API docs: http://127.0.0.1:8000/docs
 
 Seeded logins (all password `password123`):
@@ -210,21 +254,26 @@ instructor weekly availability + a travel-distance preference, a fake
 demo-city location system, variable lesson duration with tiered
 pricing, a Client Requests map (Leaflet via CDN), Postgres + deployment
 (Render, live), Filter/Sort on Open Sessions, a full Client Details page
-(location, recurring availability, itemized lesson list), contact info
-exchange in place of in-app messaging, booking/lesson-request history
-for customers, and reviews & ratings. 129 passing tests cover all of it.
-See `SCHEDULING-ROADMAP.md`, `REQUEST-CONFIRM-ROADMAP.md`,
-`CLIENT-DETAILS-ROADMAP.md`, and `PLATFORM-EXPANSION-ROADMAP.md` for how
-each piece got built, and `ROADMAP.md` for the deploy history.
+(location, recurring availability, itemized lesson list), and all seven
+parts of `PLATFORM-EXPANSION-ROADMAP.md`: contact info exchange, booking
+history, reviews & ratings, rebooking the same instructor, recurring
+weekly bookings, email notifications, and a full admin side
+(`frontend-admin/`, suspension, force-cancel, FAQ CRUD, metrics). 176
+passing tests cover all of it. See `SCHEDULING-ROADMAP.md`,
+`REQUEST-CONFIRM-ROADMAP.md`, `CLIENT-DETAILS-ROADMAP.md`, and
+`PLATFORM-EXPANSION-ROADMAP.md` for how each piece got built, and
+`ROADMAP.md` for the deploy history.
 
 **Not started:** `ROADMAP.md` Phase 4 (polish — CORS origin lock-down,
 loading states, favicon, mobile testing), one manual verification step
 (a second real person signing up to confirm data isolation live), and
-`PLATFORM-EXPANSION-ROADMAP.md` Parts 4-7 (rebook same instructor,
-recurring bookings, notifications, admin side).
+the items `PLATFORM-EXPANSION-ROADMAP.md` Part 7 explicitly called out
+of scope (2FA for admin accounts, an audit log of admin actions,
+admin-initiated password resets).
 
-**Production migration pending:** the new `reviews` table and the
-`phone`/`email`/`review` columns from `PLATFORM-EXPANSION-ROADMAP.md`
-Parts 1-3 (Alembic revision `d6381830b851`) have only been applied to
-local SQLite so far, not to the production Postgres database on Render —
-deploying will hit the create_all()-vs-migration race documented above.
+**Production migration pending:** local SQLite is fully migrated through
+`da39efd1e412` (admin role + suspension fields); production Postgres on
+Render still needs `61908be0a3e1` (rebooking), `eec36154bc48` (recurring
+bookings), and `da39efd1e412` applied — deploying will hit the
+create_all()-vs-migration race documented above, same as every prior
+deploy.
