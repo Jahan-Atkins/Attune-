@@ -29,7 +29,7 @@ AUSTIN = geo.CITY_BY_NAME["Austin, TX"]
 
 INSTRUCTORS = [
     dict(
-        name="Maya Solis", email="demo@attune.app", password="password123",
+        name="Maya Solis", email="demo@attune.app", phone="(212) 555-0101", password="password123",
         bio="Hi! I'm Maya, a certified 500-HR yoga teacher and sound healing "
             "practitioner devoted to helping people find stillness and balance.",
         certifications="RYT-500, Sound Healing Practitioner",
@@ -39,7 +39,7 @@ INSTRUCTORS = [
         availability=[(0, "09:00", "12:00"), (2, "09:00", "12:00"), (4, "13:00", "17:00")],
     ),
     dict(
-        name="Kai Bennett", email="kai@attune.app", password="password123",
+        name="Kai Bennett", email="kai@attune.app", phone="(312) 555-0102", password="password123",
         bio="Kai leads immersive sound bath journeys using crystal bowls, "
             "gongs, and chimes to guide deep relaxation.",
         certifications="Certified Sound Healing Practitioner",
@@ -49,7 +49,7 @@ INSTRUCTORS = [
         availability=[(3, "17:00", "20:00"), (4, "17:00", "20:00"), (5, "10:00", "14:00")],
     ),
     dict(
-        name="Priya Anand", email="priya@attune.app", password="password123",
+        name="Priya Anand", email="priya@attune.app", phone="(512) 555-0103", password="password123",
         bio="Priya is a 200-HR vinyasa instructor focused on breath-led, "
             "accessible flows for every body.",
         certifications="RYT-200",
@@ -71,6 +71,7 @@ try:
         instructor = models.Instructor(
             name=data["name"],
             email=data["email"],
+            phone=data["phone"],
             hashed_password=hash_password(data["password"]),
             bio=data["bio"],
             address="",

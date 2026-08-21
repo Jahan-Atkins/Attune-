@@ -137,6 +137,8 @@ def _create_client_from_booking(db: Session, instructor: models.Instructor, book
     db.add(models.Client(
         instructor_id=instructor.id,
         name=customer.name,
+        email=customer.email,
+        phone=customer.phone,
         initials=initials,
         avatar_variant="c1",
         status="current",
@@ -155,6 +157,8 @@ def _create_client_from_lesson_request(db: Session, instructor: models.Instructo
     db.add(models.Client(
         instructor_id=instructor.id,
         name=customer.name,
+        email=customer.email,
+        phone=customer.phone,
         initials=initials,
         avatar_variant="c1",
         status="current",
@@ -166,7 +170,25 @@ def _create_client_from_lesson_request(db: Session, instructor: models.Instructo
     ))
 
 
-@router.put("/bookings/{booking_id}/confirm", response_model=schemas.ClientRequestOut)
+def _booking_confirmed_out(instructor: models.Instructor, booking: models.Booking) -> schemas.ClientRequestConfirmedOut:
+    base = _booking_out(instructor, booking)
+    return schemas.ClientRequestConfirmedOut(
+        **base.model_dump(),
+        customer_email=booking.customer.email,
+        customer_phone=booking.customer.phone,
+    )
+
+
+def _lesson_request_confirmed_out(instructor: models.Instructor, lesson_request: models.LessonRequest) -> schemas.ClientRequestConfirmedOut:
+    base = _lesson_request_out(instructor, lesson_request)
+    return schemas.ClientRequestConfirmedOut(
+        **base.model_dump(),
+        customer_email=lesson_request.customer.email,
+        customer_phone=lesson_request.customer.phone,
+    )
+
+
+@router.put("/bookings/{booking_id}/confirm", response_model=schemas.ClientRequestConfirmedOut)
 def confirm_booking(
     booking_id: int,
     db: Session = Depends(get_db),
@@ -184,10 +206,10 @@ def confirm_booking(
     _create_client_from_booking(db, instructor, booking)
     db.commit()
     db.refresh(booking)
-    return _booking_out(instructor, booking)
+    return _booking_confirmed_out(instructor, booking)
 
 
-@router.put("/lesson-requests/{lesson_request_id}/confirm", response_model=schemas.ClientRequestOut)
+@router.put("/lesson-requests/{lesson_request_id}/confirm", response_model=schemas.ClientRequestConfirmedOut)
 def confirm_lesson_request(
     lesson_request_id: int,
     db: Session = Depends(get_db),
@@ -220,4 +242,4 @@ def confirm_lesson_request(
     _create_client_from_lesson_request(db, instructor, lesson_request)
     db.commit()
     db.refresh(lesson_request)
-    return _lesson_request_out(instructor, lesson_request)
+    return _lesson_request_confirmed_out(instructor, lesson_request)

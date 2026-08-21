@@ -64,6 +64,8 @@
         <div id="signup-name-field" style="display:none;">
           <label class="field-label">Name</label>
           <input class="field-input" type="text" id="auth-name" placeholder="Jordan Lee">
+          <label class="field-label">Phone</label>
+          <input class="field-input" type="tel" id="auth-phone" placeholder="(555) 010-1234">
         </div>
         <label class="field-label">Email</label>
         <input class="field-input" type="email" id="auth-email" required>
@@ -238,11 +240,24 @@
       <p class="match-bio" id="match-bio"></p>
       <p class="match-certs" id="match-certs"></p>
       <div class="match-summary" id="match-summary"></div>
+      <div class="mock-banner" id="match-contact" style="display:none; margin-top:14px; text-align:left;"></div>
       <div id="match-pending" class="mock-banner" style="display:none; margin-top:14px;"></div>
       <div id="match-unmatched" class="form-error" style="display:none; margin-top:14px;"></div>
       <button class="btn btn-outline btn-block" style="margin-top:18px;" id="match-refresh-btn" onclick="checkLatestStatus()">Check for updates</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="openHistoryScreen()">View Past Bookings</button>
       <button class="btn btn-outline btn-block" style="margin-top:10px;" id="match-cta-btn" onclick="goToScreen('specialty')">Book Again</button>
     </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="screen" id="screen-history">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goToScreen('match')">← Back</button>
+      <p class="step-label">My Bookings</p>
+    </div>
+    <h2 class="step-title">Past requests</h2>
+    <div id="history-list" style="max-width:480px; margin:0 auto;"></div>
+    <p class="card-sub" id="history-empty" style="display:none;">Nothing here yet.</p>
   </section>
 
 </main>

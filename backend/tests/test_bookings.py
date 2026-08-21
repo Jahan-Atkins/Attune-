@@ -96,3 +96,30 @@ def test_no_client_created_and_nothing_charged_until_confirmed(client, customer_
 
     their_clients = client.get("/api/clients?status=current", headers=instructor_headers).json()
     assert all(c["name"] != "Test Customer" for c in their_clients)
+
+
+def test_list_bookings_requires_customer_auth(client):
+    res = client.get("/api/customer/bookings")
+    assert res.status_code == 401
+
+
+def test_list_bookings_returns_full_history_newest_first(client, customer_auth_headers):
+    signup_instructor_with_specialty(client, email="history_test@example.com", specialty="yoga")
+    first = client.post("/api/customer/bookings", json=_payload(package="single"), headers=customer_auth_headers).json()
+    second = client.post("/api/customer/bookings", json=_payload(package="pack4"), headers=customer_auth_headers).json()
+
+    history = client.get("/api/customer/bookings", headers=customer_auth_headers).json()
+    assert [b["id"] for b in history] == [second["id"], first["id"]]
+
+
+def test_list_bookings_isolated_between_customers(client, customer_auth_headers):
+    signup_instructor_with_specialty(client, email="history_iso@example.com", specialty="yoga")
+    client.post("/api/customer/bookings", json=_payload(), headers=customer_auth_headers)
+
+    other_token = client.post("/api/customer/auth/signup", json={
+        "name": "Other Customer", "email": "other_history@example.com", "phone": "555-010-4444", "password": "custpass123",
+    }).json()["access_token"]
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+
+    assert len(client.get("/api/customer/bookings", headers=customer_auth_headers).json()) == 1
+    assert len(client.get("/api/customer/bookings", headers=other_headers).json()) == 0

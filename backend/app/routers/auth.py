@@ -25,6 +25,7 @@ def signup(payload: schemas.SignupRequest, db: Session = Depends(get_db)):
     instructor = models.Instructor(
         name=payload.name,
         email=payload.email,
+        phone=payload.phone,
         hashed_password=security.hash_password(payload.password),
     )
     db.add(instructor)

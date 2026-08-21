@@ -10,6 +10,11 @@ function goHome() {
   goToScreen('landing');
 }
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /* =========================================================
    AUTH
    Uses its own localStorage key (attune_customer_token) so this
@@ -55,6 +60,7 @@ function applyAuthMode() {
   const isSignup = authMode === 'signup';
   document.getElementById('signup-name-field').style.display = isSignup ? 'block' : 'none';
   document.getElementById('auth-name').required = isSignup;
+  document.getElementById('auth-phone').required = isSignup;
   document.getElementById('auth-title').textContent = isSignup ? 'Create Your Account' : 'Log In';
   document.getElementById('auth-sub').textContent = isSignup ? 'Takes about a minute.' : 'Welcome back.';
   document.getElementById('auth-submit-btn').textContent = isSignup ? 'Create Account' : 'Log In';
@@ -73,10 +79,11 @@ async function handleAuthSubmit(evt) {
     let token;
     if (authMode === 'signup') {
       const name = document.getElementById('auth-name').value.trim();
+      const phone = document.getElementById('auth-phone').value.trim();
       const res = await fetch('/api/customer/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, phone, password }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Could not sign up');
       token = (await res.json()).access_token;
@@ -353,6 +360,111 @@ async function submitSchedulePayment(evt) {
 }
 
 /* =========================================================
+   HISTORY + REVIEWS
+   No in-app messaging, no separate review-form screen — reviews are a
+   small inline expand right on each history card, since this app has no
+   modal system (unlike the instructor app) and a whole new screen felt
+   like overkill for "pick a star rating and an optional comment."
+   ========================================================= */
+let selectedStars = {};
+
+async function openHistoryScreen() {
+  goToScreen('history');
+  await loadHistory();
+}
+
+async function loadHistory() {
+  const listEl = document.getElementById('history-list');
+  const emptyEl = document.getElementById('history-empty');
+  try {
+    const [bookings, lessonRequests] = await Promise.all([
+      apiFetch('/api/customer/bookings'),
+      apiFetch('/api/customer/lesson-requests'),
+    ]);
+    const items = [
+      ...bookings.map(b => ({ ...b, _type: 'booking' })),
+      ...lessonRequests.map(lr => ({ ...lr, _type: 'lesson-request' })),
+    ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    if (items.length === 0) {
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+    } else {
+      listEl.innerHTML = items.map(historyCardHTML).join('');
+      emptyEl.style.display = 'none';
+    }
+  } catch (err) {
+    listEl.innerHTML = '';
+    emptyEl.textContent = "Couldn't load your history — is the backend running?";
+    emptyEl.style.display = 'block';
+    console.error('Failed to load history:', err);
+  }
+}
+
+function historyCardHTML(item) {
+  const specialtyLabel = item.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const statusLabel = { pending: 'Pending', matched: 'Matched', unmatched: 'Unmatched' }[item.status] || item.status;
+  const dateStr = item.created_at ? new Date(item.created_at).toLocaleDateString() : '';
+  const instructorName = item.instructor ? item.instructor.name : null;
+  const key = `${item._type}-${item.id}`;
+  return `
+    <div class="card wizard-card" style="margin:0 0 14px; padding:20px 22px; text-align:left;">
+      <p class="card-sub" style="margin:0; text-align:left;">${escapeHtml(dateStr)} · ${escapeHtml(statusLabel)}</p>
+      <p class="match-name" style="font-size:17px; margin-top:4px;">${escapeHtml(specialtyLabel)}${instructorName ? ' with ' + escapeHtml(instructorName) : ''}</p>
+      ${item.status === 'matched' ? `
+        <button class="btn btn-outline" style="margin-top:12px; padding:10px 16px; font-size:13px;" onclick="toggleReviewForm('${key}')">Leave a Review</button>
+        <div id="review-form-${key}" style="display:none; margin-top:14px;"></div>` : ''}
+    </div>`;
+}
+
+function toggleReviewForm(key) {
+  const el = document.getElementById(`review-form-${key}`);
+  if (el.style.display === 'block') {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="star-picker" id="stars-${key}">
+      ${[1, 2, 3, 4, 5].map(n => `<span class="star" data-star="${n}" onclick="selectStar('${key}', ${n})">★</span>`).join('')}
+    </div>
+    <textarea class="field-input" id="comment-${key}" placeholder="Optional comment" style="margin-top:8px; min-height:60px;"></textarea>
+    <div id="review-error-${key}" class="form-error" style="display:none; margin-top:8px;"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:8px; padding:10px;" onclick="submitReview('${key}')">Submit Review</button>`;
+}
+
+function selectStar(key, n) {
+  selectedStars[key] = n;
+  document.querySelectorAll(`#stars-${key} .star`).forEach(s => {
+    s.classList.toggle('selected', Number(s.dataset.star) <= n);
+  });
+}
+
+async function submitReview(key) {
+  const dashIndex = key.lastIndexOf('-');
+  const type = key.slice(0, dashIndex);
+  const id = Number(key.slice(dashIndex + 1));
+  const rating = selectedStars[key];
+  const errorEl = document.getElementById(`review-error-${key}`);
+  errorEl.style.display = 'none';
+  if (!rating) {
+    errorEl.textContent = 'Pick a star rating.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  const payload = { rating, comment: document.getElementById(`comment-${key}`).value.trim() || null };
+  if (type === 'lesson-request') payload.lesson_request_id = id; else payload.booking_id = id;
+  try {
+    await apiFetch('/api/customer/reviews', { method: 'POST', body: JSON.stringify(payload) });
+    document.getElementById(`review-form-${key}`).innerHTML = '<p class="card-sub" style="text-align:left; margin:0;">Thanks for your review!</p>';
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not submit review.';
+    errorEl.style.display = 'block';
+  }
+}
+
+/* =========================================================
    MATCH DISPLAY
    Handles both result shapes: a package Booking and a scheduled
    LessonRequest — distinguished by the presence of `requested_day`,
@@ -372,9 +484,11 @@ function renderMatch(result, justBooked) {
 
   const pendingEl = document.getElementById('match-pending');
   const unmatchedEl = document.getElementById('match-unmatched');
+  const contactEl = document.getElementById('match-contact');
   const refreshBtn = document.getElementById('match-refresh-btn');
   pendingEl.style.display = 'none';
   unmatchedEl.style.display = 'none';
+  contactEl.style.display = 'none';
   refreshBtn.style.display = result.status === 'pending' ? 'block' : 'none';
 
   if (result.status === 'pending') {
@@ -421,6 +535,9 @@ function renderMatch(result, justBooked) {
   document.getElementById('match-certs').textContent = isLessonRequest && result.distance_km != null
     ? `${instructor.certifications} · ~${result.distance_km} km away`
     : instructor.certifications;
+
+  contactEl.innerHTML = `<b>Contact ${escapeHtml(instructor.name)}:</b><br>${escapeHtml(instructor.email)}<br>${escapeHtml(instructor.phone)}`;
+  contactEl.style.display = 'block';
 }
 
 async function checkLatestStatus() {

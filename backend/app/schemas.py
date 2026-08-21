@@ -32,6 +32,8 @@ class ClientBase(BaseModel):
     sessions_total: int = 0
     amount_paid: float = 0
     amount_total: float = 0
+    email: Optional[str] = None
+    phone: Optional[str] = None
     address: Optional[str] = None
     location_type: Optional[str] = None
     start_date: Optional[str] = None
@@ -88,6 +90,7 @@ class Summary(BaseModel):
 class SignupRequest(BaseModel):
     name: str
     email: EmailStr
+    phone: str
     password: str
 
 
@@ -101,6 +104,7 @@ class Token(BaseModel):
 class ProfileOut(BaseModel):
     name: str
     email: EmailStr
+    phone: str
     bio: str
     address: str
     certifications: str
@@ -108,11 +112,14 @@ class ProfileOut(BaseModel):
     active: bool
     city: Optional[str] = None
     max_travel_distance_km: Optional[float] = None
+    average_rating: Optional[float] = None
+    review_count: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
+    phone: Optional[str] = None
     bio: Optional[str] = None
     address: Optional[str] = None
     certifications: Optional[str] = None
@@ -136,22 +143,33 @@ class FAQOut(BaseModel):
 class CustomerSignupRequest(BaseModel):
     name: str
     email: EmailStr
+    phone: str
     password: str
 
 
 class CustomerOut(BaseModel):
     name: str
     email: EmailStr
+    phone: str
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---- Public instructor view (what a matched customer sees — no email, no address) ----
+# ---- Public instructor view (what a matched customer sees) ----
+# email/phone are included here on purpose — this schema is only ever
+# populated once `instructor_id` is actually set on a Booking/LessonRequest,
+# i.e. only after a match is confirmed. See client_requests.py's confirm
+# routes for the symmetric case (the instructor learning the customer's
+# contact info).
 
 class InstructorPublicOut(BaseModel):
     name: str
+    email: EmailStr
+    phone: str
     bio: str
     certifications: str
     specialty: str
+    average_rating: Optional[float] = None
+    review_count: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -178,6 +196,7 @@ class BookingOut(BaseModel):
     notes: Optional[str] = None
     status: str
     instructor: Optional[InstructorPublicOut] = None
+    created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -229,6 +248,7 @@ class LessonRequestOut(BaseModel):
     distance_km: Optional[float] = None
     status: str
     instructor: Optional[InstructorPublicOut] = None
+    created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -257,3 +277,33 @@ class ClientRequestOut(BaseModel):
     requested_end_time: Optional[str] = None
     notes: Optional[str] = None
     created_at: Optional[str] = None
+
+
+class ClientRequestConfirmedOut(ClientRequestOut):
+    """
+    Returned only by the confirm routes, never by the list/browse
+    endpoint — a customer's contact info shouldn't be visible to every
+    instructor whose queue a pending request passes through, only to the
+    one who actually confirms it. See client_requests.py.
+    """
+    customer_email: str
+    customer_phone: str
+
+
+# ---- Reviews ----
+
+class ReviewCreate(BaseModel):
+    booking_id: Optional[int] = None
+    lesson_request_id: Optional[int] = None
+    rating: int  # 1-5
+    comment: Optional[str] = None
+
+
+class ReviewOut(BaseModel):
+    id: int
+    instructor_id: int
+    rating: int
+    comment: Optional[str] = None
+    created_at: datetime
+    customer_name: Optional[str] = None  # populated by the router, not a real Review column
+    model_config = ConfigDict(from_attributes=True)

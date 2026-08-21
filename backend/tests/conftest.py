@@ -41,11 +41,11 @@ def client():
     return TestClient(app)
 
 
-def signup(client, email, password="testpass123", name="Test Instructor"):
+def signup(client, email, password="testpass123", name="Test Instructor", phone="555-010-0000"):
     """Not a fixture itself — a helper the fixtures below call, so each
     test can control the email/password when it needs to (e.g. to create
     a *second* instructor for isolation tests)."""
-    res = client.post("/api/auth/signup", json={"name": name, "email": email, "password": password})
+    res = client.post("/api/auth/signup", json={"name": name, "email": email, "phone": phone, "password": password})
     assert res.status_code == 201, res.text
     return res.json()["access_token"]
 
@@ -64,8 +64,8 @@ def second_auth_headers(client):
     return {"Authorization": f"Bearer {token}"}
 
 
-def signup_customer(client, email, password="custpass123", name="Test Customer"):
-    res = client.post("/api/customer/auth/signup", json={"name": name, "email": email, "password": password})
+def signup_customer(client, email, password="custpass123", name="Test Customer", phone="555-010-1111"):
+    res = client.post("/api/customer/auth/signup", json={"name": name, "email": email, "phone": phone, "password": password})
     assert res.status_code == 201, res.text
     return res.json()["access_token"]
 

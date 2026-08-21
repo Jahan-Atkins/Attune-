@@ -117,3 +117,16 @@ def test_get_my_latest_lesson_request(client, customer_auth_headers):
     res = client.get("/api/customer/lesson-requests/me", headers=customer_auth_headers)
     assert res.status_code == 200
     assert res.json()["status"] in ("pending", "unmatched")
+
+
+def test_list_lesson_requests_requires_customer_auth(client):
+    res = client.get("/api/customer/lesson-requests")
+    assert res.status_code == 401
+
+
+def test_list_lesson_requests_returns_full_history_newest_first(client, customer_auth_headers):
+    first = client.post("/api/customer/lesson-requests", json=_request_payload(duration_minutes=30), headers=customer_auth_headers).json()
+    second = client.post("/api/customer/lesson-requests", json=_request_payload(duration_minutes=60), headers=customer_auth_headers).json()
+
+    history = client.get("/api/customer/lesson-requests", headers=customer_auth_headers).json()
+    assert [lr["id"] for lr in history] == [second["id"], first["id"]]

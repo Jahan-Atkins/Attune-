@@ -10,6 +10,8 @@ travel-distance preference and whether they have an overlapping
 availability block — both evaluated dynamically in client_requests.py,
 not decided here.
 """
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -115,6 +117,22 @@ def create_lesson_request(
     db.commit()
     db.refresh(lesson_request)
     return lesson_request
+
+
+@router.get("", response_model=List[schemas.LessonRequestOut])
+def list_my_lesson_requests(
+    db: Session = Depends(get_db),
+    customer: models.Customer = Depends(get_current_customer),
+):
+    """Full history, newest first — used for "past matches" (leave a
+    review, book again), not just the single latest one /me returns.
+    Same shape as bookings.py's list endpoint."""
+    return (
+        db.query(models.LessonRequest)
+        .filter(models.LessonRequest.customer_id == customer.id)
+        .order_by(models.LessonRequest.id.desc())
+        .all()
+    )
 
 
 @router.get("/me", response_model=schemas.LessonRequestOut)

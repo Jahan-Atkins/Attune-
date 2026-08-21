@@ -15,8 +15,8 @@ instead of two disconnected demos.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, Float, Boolean, Text, ForeignKey, DateTime
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Float, Boolean, Text, ForeignKey, DateTime, UniqueConstraint, func
+from sqlalchemy.orm import relationship, object_session
 from .database import Base
 from . import geo
 
@@ -27,6 +27,7 @@ class Instructor(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
+    phone = Column(String, nullable=False, server_default="")
     hashed_password = Column(String, nullable=False)
 
     bio = Column(Text, default="")
@@ -43,6 +44,7 @@ class Instructor(Base):
     matched_bookings = relationship("Booking", back_populates="instructor")
     availability_blocks = relationship("AvailabilityBlock", back_populates="instructor", cascade="all, delete-orphan")
     matched_lesson_requests = relationship("LessonRequest", back_populates="instructor")
+    reviews_received = relationship("Review", back_populates="instructor", cascade="all, delete-orphan")
 
     @property
     def city(self):
@@ -50,6 +52,26 @@ class Instructor(Base):
         dropdown to show the currently-selected city. See geo.py — coords
         always come from the fixed demo city list, never free-text."""
         return geo.city_name_for_coords(self.latitude, self.longitude)
+
+    @property
+    def average_rating(self):
+        """Computed fresh via the session this instance is already
+        attached to (object_session) — same "don't store what you can
+        compute" preference as `city` above and as distance_km elsewhere
+        in this app. Returns None (not 0) with zero reviews, so the
+        frontend can distinguish "no rating yet" from "rated 0"."""
+        session = object_session(self)
+        if session is None:
+            return None
+        avg = session.query(func.avg(Review.rating)).filter(Review.instructor_id == self.id).scalar()
+        return round(avg, 1) if avg is not None else None
+
+    @property
+    def review_count(self):
+        session = object_session(self)
+        if session is None:
+            return 0
+        return session.query(Review).filter(Review.instructor_id == self.id).count()
 
 
 class Client(Base):
@@ -67,6 +89,12 @@ class Client(Base):
     sessions_total = Column(Integer, default=0)
     amount_paid = Column(Float, default=0)
     amount_total = Column(Float, default=0)
+
+    # Contact info, copied from the Customer record at confirm time (see
+    # client_requests.py) — nullable because a client added by hand via
+    # "+ Add Client" was never a real Customer account with these on file.
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
 
     # Client Details page fields — all optional since older/simpler clients
     # (e.g. ones added by hand via "+ Add Client") never fill these in.
@@ -154,12 +182,14 @@ class Customer(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
+    phone = Column(String, nullable=False, server_default="")
     hashed_password = Column(String, nullable=False)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
 
     bookings = relationship("Booking", back_populates="customer", cascade="all, delete-orphan")
     lesson_requests = relationship("LessonRequest", back_populates="customer", cascade="all, delete-orphan")
+    reviews_given = relationship("Review", back_populates="customer", cascade="all, delete-orphan")
 
     @property
     def city(self):
@@ -264,3 +294,39 @@ class LessonRequest(Base):
 
     customer = relationship("Customer", back_populates="lesson_requests")
     instructor = relationship("Instructor", back_populates="matched_lesson_requests")
+
+
+class Review(Base):
+    """
+    A customer's rating of an instructor, tied to one specific matched
+    Booking or LessonRequest — exactly one of `booking_id`/
+    `lesson_request_id` is set per review, mirroring the same
+    package-vs-schedule duality client_requests.py already handles.
+    Reviewable as soon as that booking/request reaches "matched" — this
+    app has no structured "the session actually happened on this date"
+    signal to gate on instead (ClientLesson.date is free text, not a
+    real date the backend could compare against now()), so "matched" is
+    the simplification, documented rather than silently assumed.
+    """
+    __tablename__ = "reviews"
+    __table_args__ = (
+        UniqueConstraint("customer_id", "booking_id", name="uq_review_customer_booking"),
+        UniqueConstraint("customer_id", "lesson_request_id", name="uq_review_customer_lesson_request"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    instructor_id = Column(Integer, ForeignKey("instructors.id"), nullable=False)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)
+    lesson_request_id = Column(Integer, ForeignKey("lesson_requests.id"), nullable=True)
+
+    rating = Column(Integer, nullable=False)  # 1-5
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    instructor = relationship("Instructor", back_populates="reviews_received")
+    customer = relationship("Customer", back_populates="reviews_given")
+
+    @property
+    def customer_name(self):
+        return self.customer.name if self.customer else None

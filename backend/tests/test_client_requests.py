@@ -238,3 +238,60 @@ def test_confirm_lesson_request_already_claimed_returns_404(client, customer_aut
     assert first.status_code == 200
     second = client.put(f"/api/client-requests/lesson-requests/{lesson_request_id}/confirm", headers=headers_b)
     assert second.status_code == 404
+
+
+# ---- contact info exchange (no in-app messaging — direct exchange on confirm) ----
+
+def test_pending_list_never_exposes_customer_contact_info(client, customer_auth_headers):
+    """Browsing instructors see a pending request, but not the customer's
+    email/phone — only the instructor who actually confirms should."""
+    headers = _make_instructor(client, "contact_browse@example.com", specialty="yoga")
+    client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
+
+    body = client.get("/api/client-requests", headers=headers).json()
+    assert len(body) == 1
+    assert "customer_email" not in body[0]
+    assert "customer_phone" not in body[0]
+
+
+def test_confirm_booking_returns_customer_contact_info(client, customer_auth_headers):
+    headers = _make_instructor(client, "contact_booking@example.com", specialty="yoga")
+    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
+    booking_id = res.json()["id"]
+
+    confirmed = client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers).json()
+    assert confirmed["customer_email"] == "customer@example.com"
+    assert confirmed["customer_phone"] == "555-010-1111"
+
+
+def test_confirm_lesson_request_returns_customer_contact_info(client, customer_auth_headers):
+    headers = _make_instructor(client, "contact_lesson@example.com", specialty="yoga", availability=[(TUESDAY, "08:00", "12:00")])
+    res = client.post("/api/customer/lesson-requests", json=_lesson_payload(), headers=customer_auth_headers)
+    lesson_request_id = res.json()["id"]
+
+    confirmed = client.put(f"/api/client-requests/lesson-requests/{lesson_request_id}/confirm", headers=headers).json()
+    assert confirmed["customer_email"] == "customer@example.com"
+    assert confirmed["customer_phone"] == "555-010-1111"
+
+
+def test_confirmed_client_has_customer_contact_info_on_record(client, customer_auth_headers):
+    headers = _make_instructor(client, "contact_client_record@example.com", specialty="yoga")
+    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
+    booking_id = res.json()["id"]
+    client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers)
+
+    their_clients = client.get("/api/clients?status=current", headers=headers).json()
+    matched = [c for c in their_clients if c["name"] == "Test Customer"][0]
+    assert matched["email"] == "customer@example.com"
+    assert matched["phone"] == "555-010-1111"
+
+
+def test_matched_booking_exposes_instructor_contact_info_to_customer(client, customer_auth_headers):
+    headers = _make_instructor(client, "contact_instructor@example.com", specialty="yoga", name="Contact Instructor")
+    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
+    booking_id = res.json()["id"]
+    client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers)
+
+    my_booking = client.get("/api/customer/bookings/me", headers=customer_auth_headers).json()
+    assert my_booking["instructor"]["email"] == "contact_instructor@example.com"
+    assert my_booking["instructor"]["phone"] == "555-010-0000"

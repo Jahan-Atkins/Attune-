@@ -26,6 +26,10 @@ Staged plans for what's not yet built, or records of what was:
 - `CLIENT-DETAILS-ROADMAP.md` — done. Filter/Sort on Open Sessions, and
   a full Client Details page (location, recurring availability,
   itemized lesson list) beyond the original simple client card.
+- `PLATFORM-EXPANSION-ROADMAP.md` — Parts 1-3 done (contact info
+  exchange in place of in-app messaging, booking/lesson-request history,
+  reviews & ratings). Parts 4-7 (rebook same instructor, recurring
+  bookings, notifications, admin side) not yet started.
 
 Check the relevant one before assuming a feature doesn't exist yet.
 
@@ -87,6 +91,24 @@ Check the relevant one before assuming a feature doesn't exist yet.
   `paid = True`. Don't add card storage to make a future feature easier
   — there's no real gateway behind this, so there's nothing legitimate
   to store it for.
+- **No in-app messaging, by explicit design decision.** Once a
+  `Booking`/`LessonRequest` is confirmed, each side gets the other's
+  email/phone directly (`ClientRequestConfirmedOut`, `InstructorPublicOut`)
+  instead of a chat/messaging system. Don't add one — see
+  `PLATFORM-EXPANSION-ROADMAP.md`'s intro for the reasoning and tradeoffs.
+- A customer's contact info (`ClientRequestConfirmedOut.customer_email`/
+  `customer_phone`) is only ever returned by the *confirm* routes in
+  `client_requests.py`, never by the pending-list `GET`
+  (`ClientRequestOut`) — every instructor whose queue a pending request
+  passes through can see the request, but only the one who actually
+  confirms it learns who the customer is. Don't add contact fields to
+  the base `ClientRequestOut` schema.
+- `Instructor.average_rating`/`review_count` (and the analogous fields on
+  `InstructorPublicOut`) are computed live via `object_session()` +
+  a query, not stored columns — same "compute fresh, never let it drift"
+  pattern as the existing `city` property and `ClientRequestOut.distance_km`.
+  If you add another aggregate like this, follow the same pattern rather
+  than caching it on the model.
 
 ## Commands
 
@@ -97,7 +119,7 @@ pip install -r requirements.txt
 alembic upgrade head
 python seed.py           # see logins below
 uvicorn app.main:app --reload
-pytest                    # 105 tests in backend/tests/ — run after any route change
+pytest                    # 129 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -175,12 +197,22 @@ pending -> broadcast -> instructor-confirms model, not auto-matching),
 instructor weekly availability + a travel-distance preference, a fake
 demo-city location system, variable lesson duration with tiered
 pricing, a Client Requests map (Leaflet via CDN), Postgres + deployment
-(Render, live), Filter/Sort on Open Sessions, and a full Client Details
-page (location, recurring availability, itemized lesson list). 105
-passing tests cover all of it. See `SCHEDULING-ROADMAP.md`,
-`REQUEST-CONFIRM-ROADMAP.md`, and `CLIENT-DETAILS-ROADMAP.md` for how
+(Render, live), Filter/Sort on Open Sessions, a full Client Details page
+(location, recurring availability, itemized lesson list), contact info
+exchange in place of in-app messaging, booking/lesson-request history
+for customers, and reviews & ratings. 129 passing tests cover all of it.
+See `SCHEDULING-ROADMAP.md`, `REQUEST-CONFIRM-ROADMAP.md`,
+`CLIENT-DETAILS-ROADMAP.md`, and `PLATFORM-EXPANSION-ROADMAP.md` for how
 each piece got built, and `ROADMAP.md` for the deploy history.
 
 **Not started:** `ROADMAP.md` Phase 4 (polish — CORS origin lock-down,
-loading states, favicon, mobile testing) and one manual verification
-step (a second real person signing up to confirm data isolation live).
+loading states, favicon, mobile testing), one manual verification step
+(a second real person signing up to confirm data isolation live), and
+`PLATFORM-EXPANSION-ROADMAP.md` Parts 4-7 (rebook same instructor,
+recurring bookings, notifications, admin side).
+
+**Production migration pending:** the new `reviews` table and the
+`phone`/`email`/`review` columns from `PLATFORM-EXPANSION-ROADMAP.md`
+Parts 1-3 (Alembic revision `d6381830b851`) have only been applied to
+local SQLite so far, not to the production Postgres database on Render —
+deploying will hit the create_all()-vs-migration race documented above.

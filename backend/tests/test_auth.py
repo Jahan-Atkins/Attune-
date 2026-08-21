@@ -3,7 +3,7 @@ from .conftest import signup
 
 def test_signup_returns_token(client):
     res = client.post("/api/auth/signup", json={
-        "name": "Ada Lovelace", "email": "ada@example.com", "password": "supersecret123",
+        "name": "Ada Lovelace", "email": "ada@example.com", "phone": "555-010-2222", "password": "supersecret123",
     })
     assert res.status_code == 201
     body = res.json()
@@ -12,7 +12,7 @@ def test_signup_returns_token(client):
 
 
 def test_signup_duplicate_email_rejected(client):
-    payload = {"name": "Ada", "email": "dup@example.com", "password": "pw123456"}
+    payload = {"name": "Ada", "email": "dup@example.com", "phone": "555-010-2222", "password": "pw123456"}
     first = client.post("/api/auth/signup", json=payload)
     assert first.status_code == 201
     second = client.post("/api/auth/signup", json=payload)

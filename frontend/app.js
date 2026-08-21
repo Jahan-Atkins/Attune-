@@ -51,6 +51,7 @@ function toggleAuthMode() {
   const isSignup = authMode === 'signup';
   document.getElementById('signup-name-field').style.display = isSignup ? 'block' : 'none';
   document.getElementById('auth-name').required = isSignup;
+  document.getElementById('auth-phone').required = isSignup;
   document.getElementById('login-sub').textContent = isSignup ? "Create your instructor account" : "Log in to your instructor account";
   document.getElementById('auth-submit-btn').textContent = isSignup ? 'Create Account' : 'Log In';
   document.getElementById('auth-toggle-btn').textContent = isSignup ? 'Already have an account? Log in' : 'New here? Create an account';
@@ -68,10 +69,11 @@ async function handleAuthSubmit(evt) {
     let token;
     if (authMode === 'signup') {
       const name = document.getElementById('auth-name').value.trim();
+      const phone = document.getElementById('auth-phone').value.trim();
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, phone, password }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Could not sign up');
       token = (await res.json()).access_token;
@@ -267,7 +269,11 @@ function openClientForm(id) {
 
       <div class="divider" style="margin:18px -22px;"></div>
 
-      <label class="field-label" style="margin-top:0;">Address</label>
+      <label class="field-label" style="margin-top:0;">Email</label>
+      <input class="field-input" type="email" id="cf-email" placeholder="Optional" value="${c && c.email ? escapeAttr(c.email) : ''}">
+      <label class="field-label">Phone</label>
+      <input class="field-input" type="tel" id="cf-phone" placeholder="Optional" value="${c && c.phone ? escapeAttr(c.phone) : ''}">
+      <label class="field-label">Address</label>
       <input class="field-input" id="cf-address" placeholder="Optional" value="${c && c.address ? escapeAttr(c.address) : ''}">
       <label class="field-label">Location type</label>
       <input class="field-input" id="cf-location-type" placeholder="e.g. Client's Home, Studio Visit, Virtual" value="${c && c.location_type ? escapeAttr(c.location_type) : ''}">
@@ -327,6 +333,8 @@ async function submitClientForm(evt, id) {
     sessions_total: Number(document.getElementById('cf-total').value) || 0,
     amount_paid: Number(document.getElementById('cf-paid').value) || 0,
     amount_total: Number(document.getElementById('cf-amount-total').value) || 0,
+    email: document.getElementById('cf-email').value.trim() || null,
+    phone: document.getElementById('cf-phone').value.trim() || null,
     address: document.getElementById('cf-address').value.trim() || null,
     location_type: document.getElementById('cf-location-type').value.trim() || null,
     start_date: document.getElementById('cf-start-date').value.trim() || null,
@@ -399,6 +407,15 @@ function renderClientDetail(c) {
     `<b>${c.sessions_completed}</b> of ${c.sessions_total} sessions completed · <b>$${c.amount_paid}</b> of $${c.amount_total} paid`;
   const rateEl = document.getElementById('cd-per-session-rate');
   rateEl.textContent = c.sessions_total ? `Get paid $${(c.amount_total / c.sessions_total).toFixed(0)} per session` : '';
+
+  const contactEl = document.getElementById('cd-contact-block');
+  if (c.email || c.phone) {
+    contactEl.innerHTML = `
+      ${c.email ? `<div class="cd-info-row"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><p>${escapeHtml(c.email)}</p></div>` : ''}
+      ${c.phone ? `<div class="cd-info-row"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .3 2 .7 3a2 2 0 0 1-.4 2.1L8 10.2a16 16 0 0 0 6 6l1.4-1.4a2 2 0 0 1 2.1-.4c1 .4 2 .6 3 .7a2 2 0 0 1 1.7 2Z"/></svg><p>${escapeHtml(c.phone)}</p></div>` : ''}`;
+  } else {
+    contactEl.innerHTML = `<p class="empty-copy" style="text-align:left; margin:0; max-width:none;">No contact info on file yet.</p>`;
+  }
 
   const locationEl = document.getElementById('cd-location-block');
   if (c.address || c.location_type) {
@@ -815,8 +832,9 @@ async function loadClientRequests() {
 
 async function confirmClientRequest(type, id) {
   try {
-    await apiFetch(`/api/client-requests/${type}/${id}/confirm`, { method: 'PUT' });
+    const confirmed = await apiFetch(`/api/client-requests/${type}/${id}/confirm`, { method: 'PUT' });
     await Promise.all([loadClientRequests(), loadClients('current'), loadClients('past'), loadSummary()]);
+    alert(`You're matched with ${confirmed.customer_name}!\n\nEmail: ${confirmed.customer_email}\nPhone: ${confirmed.customer_phone}\n\n(Also saved on their Client Details page.)`);
   } catch (err) {
     alert(err.message || 'Could not confirm this match — it may have just been claimed by another instructor.');
     await loadClientRequests();
@@ -883,6 +901,10 @@ async function loadProfile() {
       .map(s => `<span class="specialty-pill">${labels[s] || s}</span>`).join('');
 
     document.getElementById('max-distance-input').value = p.max_travel_distance_km != null ? p.max_travel_distance_km : '';
+
+    document.getElementById('profile-rating-summary').textContent = p.review_count > 0
+      ? `★ ${p.average_rating.toFixed(1)} (${p.review_count} review${p.review_count > 1 ? 's' : ''})`
+      : 'No reviews yet';
   } catch (err) {
     console.error('Failed to load profile:', err);
   }
@@ -919,6 +941,8 @@ async function openProfileForm() {
     <form id="profile-form" onsubmit="submitProfileForm(event)">
       <label class="field-label">Name</label>
       <input class="field-input" id="pf-name" required value="${escapeAttr(p.name || '')}">
+      <label class="field-label">Phone</label>
+      <input class="field-input" type="tel" id="pf-phone" value="${escapeAttr(p.phone || '')}">
       <label class="field-label">Bio</label>
       <textarea class="field-textarea" id="pf-bio">${escapeHtml(p.bio || '')}</textarea>
       <label class="field-label">Address</label>
@@ -965,6 +989,7 @@ async function submitProfileForm(evt) {
   }
   const payload = {
     name,
+    phone: document.getElementById('pf-phone').value.trim(),
     bio: document.getElementById('pf-bio').value.trim(),
     address: document.getElementById('pf-address').value.trim(),
     certifications: document.getElementById('pf-certs').value.trim(),
@@ -1115,6 +1140,35 @@ function setFaqCategory(el, category) {
 /* =========================================================
    BOOT
    ========================================================= */
+async function loadMyReviews() {
+  const listEl = document.getElementById('reviews-list');
+  const emptyEl = document.getElementById('reviews-empty');
+  const summaryEl = document.getElementById('reviews-summary');
+  try {
+    const reviews = await apiFetch('/api/profile/reviews');
+    if (reviews.length === 0) {
+      listEl.innerHTML = '';
+      summaryEl.textContent = '';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+    const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+    summaryEl.textContent = `★ ${avg.toFixed(1)} · ${reviews.length} review${reviews.length > 1 ? 's' : ''}`;
+    listEl.innerHTML = reviews.map(r => `
+      <div class="review-card">
+        <div class="review-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</div>
+        ${r.comment ? `<p class="review-comment">"${escapeHtml(r.comment)}"</p>` : ''}
+        <p class="review-meta">${escapeHtml(r.customer_name || 'A customer')} · ${new Date(r.created_at).toLocaleDateString()}</p>
+      </div>`).join('');
+  } catch (err) {
+    listEl.innerHTML = '';
+    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load reviews — is the backend running?";
+    emptyEl.style.display = 'block';
+    console.error('Failed to load reviews:', err);
+  }
+}
+
 async function boot() {
   if (!getToken()) {
     document.getElementById('login-screen').classList.remove('hidden');
@@ -1131,6 +1185,7 @@ async function boot() {
     loadFaqs('all'),
     loadAvailability(),
     loadClientRequests(),
+    loadMyReviews(),
   ]);
 }
 

@@ -23,6 +23,7 @@ def signup(payload: schemas.CustomerSignupRequest, db: Session = Depends(get_db)
     customer = models.Customer(
         name=payload.name,
         email=payload.email,
+        phone=payload.phone,
         hashed_password=security.hash_password(payload.password),
     )
     db.add(customer)

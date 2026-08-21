@@ -11,6 +11,8 @@ whether any *particular* instructor sees this request depends on their
 own travel-distance preference, evaluated dynamically when they browse
 (client_requests.py), not decided here.
 """
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -102,6 +104,21 @@ def create_booking(
     db.commit()
     db.refresh(booking)
     return booking
+
+
+@router.get("", response_model=List[schemas.BookingOut])
+def list_my_bookings(
+    db: Session = Depends(get_db),
+    customer: models.Customer = Depends(get_current_customer),
+):
+    """Full history, newest first — used for "past matches" (leave a
+    review, book again), not just the single latest one /me returns."""
+    return (
+        db.query(models.Booking)
+        .filter(models.Booking.customer_id == customer.id)
+        .order_by(models.Booking.id.desc())
+        .all()
+    )
 
 
 @router.get("/me", response_model=schemas.BookingOut)
