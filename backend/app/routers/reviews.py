@@ -1,8 +1,12 @@
 """
-Reviews span three different resource namespaces (a customer submitting
-one, an instructor's public rating, an instructor's own reviews list),
-so unlike most routers here this one doesn't set a single router-level
-prefix — each route spells out its own full path instead.
+Reviews span two different resource namespaces (a customer submitting
+one, an instructor's own reviews list), so unlike most routers here this
+one doesn't set a single router-level prefix — each route spells out its
+own full path instead. A matched customer already sees an instructor's
+average_rating/review_count via InstructorPublicOut, and there's no
+instructor-browse feature yet, so there's deliberately no public
+GET /api/instructors/{id}/reviews route — add one if a browse feature
+ever needs it.
 
 A review is reviewable as soon as its Booking/LessonRequest reaches
 "matched" — see models.Review's docstring for why that's the gate
@@ -83,20 +87,6 @@ def create_review(
     db.commit()
     db.refresh(review)
     return review
-
-
-@router.get("/api/instructors/{instructor_id}/reviews", response_model=List[schemas.ReviewOut])
-def list_instructor_reviews(instructor_id: int, db: Session = Depends(get_db)):
-    """Public, unauthenticated — reviews aren't sensitive (a matched
-    customer already sees an instructor's rating via InstructorPublicOut)
-    and this is the natural shape for a future instructor-browse feature,
-    even though nothing in this app browses instructors yet."""
-    return (
-        db.query(models.Review)
-        .filter(models.Review.instructor_id == instructor_id)
-        .order_by(models.Review.created_at.desc())
-        .all()
-    )
 
 
 @router.get("/api/profile/reviews", response_model=List[schemas.ReviewOut])

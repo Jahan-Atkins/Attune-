@@ -49,8 +49,3 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         )
     token = security.create_access_token(instructor.id, subject_type="instructor")
     return schemas.Token(access_token=token)
-
-
-@router.get("/me", response_model=schemas.ProfileOut)
-def read_current_instructor(instructor: models.Instructor = Depends(security.get_current_instructor)):
-    return instructor

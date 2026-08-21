@@ -481,8 +481,15 @@ async function deleteClientFromDetail() {
   }
 }
 
-function contactClientStub() {
-  alert("Messaging isn't wired up in this demo yet — it'd send to the client's account here.");
+function contactClient() {
+  const c = currentClientDetail;
+  if (c && c.email) {
+    window.location.href = `mailto:${c.email}`;
+  } else if (c && c.phone) {
+    window.location.href = `tel:${c.phone}`;
+  } else {
+    alert('No contact info on file for this client yet.');
+  }
 }
 
 function openAddLessonForm() {

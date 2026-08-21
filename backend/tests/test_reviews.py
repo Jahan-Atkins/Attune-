@@ -108,16 +108,6 @@ def test_reject_invalid_rating(client, customer_auth_headers):
     assert res.status_code == 400
 
 
-def test_public_instructor_reviews_list_needs_no_auth(client, customer_auth_headers):
-    _, booking_id = _make_matched_booking(client, customer_auth_headers, email="public_reviews@example.com")
-    client.post("/api/customer/reviews", json={"booking_id": booking_id, "rating": 5}, headers=customer_auth_headers)
-
-    # No Authorization header at all — the point of this test.
-    res = client.get("/api/instructors/1/reviews")
-    assert res.status_code == 200
-    assert isinstance(res.json(), list)
-
-
 def test_my_reviews_requires_instructor_auth(client):
     res = client.get("/api/profile/reviews")
     assert res.status_code == 401

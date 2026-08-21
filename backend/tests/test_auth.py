@@ -35,14 +35,3 @@ def test_login_wrong_password_rejected(client):
 def test_login_unknown_email_rejected(client):
     res = client.post("/api/auth/login", data={"username": "nobody@example.com", "password": "whatever"})
     assert res.status_code == 401
-
-
-def test_me_requires_token(client):
-    res = client.get("/api/auth/me")
-    assert res.status_code == 401
-
-
-def test_me_returns_current_instructor(client, auth_headers):
-    res = client.get("/api/auth/me", headers=auth_headers)
-    assert res.status_code == 200
-    assert res.json()["email"] == "instructor@example.com"

@@ -45,8 +45,3 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         )
     token = security.create_access_token(customer.id, subject_type="customer")
     return schemas.Token(access_token=token)
-
-
-@router.get("/me", response_model=schemas.CustomerOut)
-def read_current_customer(customer: models.Customer = Depends(security.get_current_customer)):
-    return customer

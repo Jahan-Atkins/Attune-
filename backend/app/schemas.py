@@ -147,13 +147,6 @@ class CustomerSignupRequest(BaseModel):
     password: str
 
 
-class CustomerOut(BaseModel):
-    name: str
-    email: EmailStr
-    phone: str
-    model_config = ConfigDict(from_attributes=True)
-
-
 # ---- Public instructor view (what a matched customer sees) ----
 # email/phone are included here on purpose — this schema is only ever
 # populated once `instructor_id` is actually set on a Booking/LessonRequest,
