@@ -68,7 +68,40 @@ class Client(Base):
     amount_paid = Column(Float, default=0)
     amount_total = Column(Float, default=0)
 
+    # Client Details page fields — all optional since older/simpler clients
+    # (e.g. ones added by hand via "+ Add Client") never fill these in.
+    address = Column(String, nullable=True)
+    location_type = Column(String, nullable=True)  # e.g. "Client's Home", "Studio Visit", "Virtual"
+    start_date = Column(String, nullable=True)  # free text, e.g. "As soon as possible" or a real date
+    lessons_per_week = Column(Integer, nullable=True)
+    available_days = Column(String, nullable=True)  # comma-separated day-of-week ints, "0,2,3,5" — 0=Monday
+    weekday_start = Column(String, nullable=True)  # "HH:MM"
+    weekday_end = Column(String, nullable=True)
+    weekend_start = Column(String, nullable=True)
+    weekend_end = Column(String, nullable=True)
+
     instructor = relationship("Instructor", back_populates="clients")
+    lessons = relationship("ClientLesson", back_populates="client", cascade="all, delete-orphan", order_by="ClientLesson.lesson_number")
+
+
+class ClientLesson(Base):
+    """
+    One entry in a Client's itemized lesson history, shown on the Client
+    Details page's "Lessons Schedule" list — separate from the aggregate
+    `sessions_completed`/`sessions_total` counters on Client itself,
+    which stay manually editable summary numbers rather than being
+    derived from this list, to avoid a larger refactor of the existing
+    Add/Edit Client form.
+    """
+    __tablename__ = "client_lessons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    lesson_number = Column(Integer, nullable=False)
+    date = Column(String, nullable=True)
+    paid = Column(Boolean, default=False)
+
+    client = relationship("Client", back_populates="lessons")
 
 
 class SessionListing(Base):
@@ -88,8 +121,23 @@ class SessionListing(Base):
     pay_rate = Column(String, nullable=True)
     notes = Column(String, nullable=True)
 
+    # Filter/sort fields — all optional. day_of_week/lessons_per_week
+    # drive the Filter modal; latitude/longitude (resolved from a demo
+    # city, same as everywhere else in this app) drive Nearest/Farthest
+    # sort. `date`/`location` above stay free text for display — these
+    # are the structured counterparts filtering/sorting actually reads.
+    day_of_week = Column(Integer, nullable=True)  # 0=Monday ... 6=Sunday
+    lessons_per_week = Column(Integer, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
     requested_by_id = Column(Integer, ForeignKey("instructors.id"), nullable=True)
     requested_by = relationship("Instructor", back_populates="requested_sessions")
+
+    @property
+    def city(self):
+        return geo.city_name_for_coords(self.latitude, self.longitude)
 
 
 class FAQ(Base):

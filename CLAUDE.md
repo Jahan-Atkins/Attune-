@@ -23,6 +23,9 @@ Staged plans for what's not yet built, or records of what was:
   instructor-confirms model both booking flows use now, instructor
   travel-distance preference, variable lesson duration, and the Client
   Requests map.
+- `CLIENT-DETAILS-ROADMAP.md` — done. Filter/Sort on Open Sessions, and
+  a full Client Details page (location, recurring availability,
+  itemized lesson list) beyond the original simple client card.
 
 Check the relevant one before assuming a feature doesn't exist yet.
 
@@ -94,7 +97,7 @@ pip install -r requirements.txt
 alembic upgrade head
 python seed.py           # see logins below
 uvicorn app.main:app --reload
-pytest                    # 94 tests in backend/tests/ — run after any route change
+pytest                    # 105 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -156,12 +159,15 @@ request types — packages and scheduled lessons — both going through a
 pending -> broadcast -> instructor-confirms model, not auto-matching),
 instructor weekly availability + a travel-distance preference, a fake
 demo-city location system, variable lesson duration with tiered
-pricing, a Client Requests map (Leaflet via CDN), and Postgres +
-deployment (Render, live). 94 passing tests cover all of it. See
-`SCHEDULING-ROADMAP.md` and `REQUEST-CONFIRM-ROADMAP.md` for how the
-matching model got to its current shape, and `ROADMAP.md` for the
-deploy history.
+pricing, a Client Requests map (Leaflet via CDN), Postgres + deployment
+(Render, live), Filter/Sort on Open Sessions, and a full Client Details
+page (location, recurring availability, itemized lesson list). 105
+passing tests cover all of it. See `SCHEDULING-ROADMAP.md`,
+`REQUEST-CONFIRM-ROADMAP.md`, and `CLIENT-DETAILS-ROADMAP.md` for how
+each piece got built, and `ROADMAP.md` for the deploy history.
 
 **Not started:** `ROADMAP.md` Phase 4 (polish — CORS origin lock-down,
 loading states, favicon, mobile testing) and one manual verification
 step (a second real person signing up to confirm data isolation live).
+The Client Details/Filter/Sort work above is built and tested locally
+but not yet deployed to the live Render site — see that roadmap doc.

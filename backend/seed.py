@@ -128,6 +128,34 @@ try:
     else:
         print("Clients already exist, skipping.")
 
+    if db.query(models.SessionListing).count() == 0:
+        db.add_all([
+            models.SessionListing(
+                title="Sunrise Vinyasa Cover", status="open",
+                date="Mon, 7:00 AM", location="Riverside Studio", pay_rate="$55",
+                day_of_week=0, lessons_per_week=1,
+                latitude=NYC["lat"], longitude=NYC["lng"],
+                notes="Covering a one-off sunrise class, single session.",
+            ),
+            models.SessionListing(
+                title="Weekly Sound Bath Series", status="open",
+                date="Recurring, Thu evenings", location="Lakeside Wellness Center", pay_rate="$70/session",
+                day_of_week=3, lessons_per_week=4,
+                latitude=CHICAGO["lat"], longitude=CHICAGO["lng"],
+                notes="A 4-week recurring series, same time each week.",
+            ),
+            models.SessionListing(
+                title="Corporate Wellness Yoga", status="open",
+                date="Weekdays, flexible", location="Downtown Office Park", pay_rate="$90/session",
+                day_of_week=None, lessons_per_week=6,
+                latitude=AUSTIN["lat"], longitude=AUSTIN["lng"],
+                notes="High-frequency contract — up to 6 sessions/week, any weekday.",
+            ),
+        ])
+        print("Seeded session listings.")
+    else:
+        print("Session listings already exist, skipping.")
+
     if db.query(models.FAQ).count() == 0:
         db.add_all([
             models.FAQ(

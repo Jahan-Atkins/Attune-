@@ -85,3 +85,38 @@ def delete_client(
     db.delete(client)
     db.commit()
     return None
+
+
+@router.post("/{client_id}/lessons", response_model=schemas.ClientLessonOut, status_code=201)
+def add_client_lesson(
+    client_id: int,
+    payload: schemas.ClientLessonCreate,
+    db: Session = Depends(get_db),
+    instructor: models.Instructor = Depends(get_current_instructor),
+):
+    client = _get_owned_client(client_id, db, instructor)
+    lesson = models.ClientLesson(client_id=client.id, **payload.model_dump())
+    db.add(lesson)
+    db.commit()
+    db.refresh(lesson)
+    return lesson
+
+
+@router.delete("/{client_id}/lessons/{lesson_id}", status_code=204)
+def delete_client_lesson(
+    client_id: int,
+    lesson_id: int,
+    db: Session = Depends(get_db),
+    instructor: models.Instructor = Depends(get_current_instructor),
+):
+    client = _get_owned_client(client_id, db, instructor)
+    lesson = (
+        db.query(models.ClientLesson)
+        .filter(models.ClientLesson.id == lesson_id, models.ClientLesson.client_id == client.id)
+        .first()
+    )
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    db.delete(lesson)
+    db.commit()
+    return None

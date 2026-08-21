@@ -67,3 +67,85 @@ def test_delete_client(client, auth_headers):
 
     get_res = client.get(f"/api/clients/{client_id}", headers=auth_headers)
     assert get_res.status_code == 404
+
+
+def test_client_details_fields_persist(client, auth_headers):
+    payload = dict(
+        CLIENT_PAYLOAD,
+        address="2757 Firethorne Avenue, Fullerton, California 92835",
+        location_type="Client's Home",
+        start_date="As soon as possible",
+        lessons_per_week=3,
+        available_days="0,2,3,5",
+        weekday_start="10:00", weekday_end="12:00",
+        weekend_start="10:00", weekend_end="12:00",
+    )
+    create_res = client.post("/api/clients", json=payload, headers=auth_headers)
+    assert create_res.status_code == 201
+    body = create_res.json()
+    assert body["address"] == "2757 Firethorne Avenue, Fullerton, California 92835"
+    assert body["lessons_per_week"] == 3
+    assert body["available_days"] == "0,2,3,5"
+    assert body["lessons"] == []
+
+
+def test_add_and_list_client_lessons(client, auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+
+    res = client.post(
+        f"/api/clients/{client_id}/lessons",
+        json={"lesson_number": 1, "date": "07/09/2026", "paid": True},
+        headers=auth_headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["paid"] is True
+
+    get_res = client.get(f"/api/clients/{client_id}", headers=auth_headers)
+    lessons = get_res.json()["lessons"]
+    assert len(lessons) == 1
+    assert lessons[0]["lesson_number"] == 1
+
+
+def test_delete_client_lesson(client, auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+    lesson_res = client.post(
+        f"/api/clients/{client_id}/lessons",
+        json={"lesson_number": 1, "date": "07/09/2026", "paid": True},
+        headers=auth_headers,
+    )
+    lesson_id = lesson_res.json()["id"]
+
+    delete_res = client.delete(f"/api/clients/{client_id}/lessons/{lesson_id}", headers=auth_headers)
+    assert delete_res.status_code == 204
+
+    get_res = client.get(f"/api/clients/{client_id}", headers=auth_headers)
+    assert get_res.json()["lessons"] == []
+
+
+def test_cannot_add_lesson_to_another_instructors_client(client, auth_headers, second_auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+
+    res = client.post(
+        f"/api/clients/{client_id}/lessons",
+        json={"lesson_number": 1, "date": "07/09/2026", "paid": True},
+        headers=second_auth_headers,
+    )
+    assert res.status_code == 404
+
+
+def test_deleting_client_cascades_to_its_lessons(client, auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+    client.post(
+        f"/api/clients/{client_id}/lessons",
+        json={"lesson_number": 1, "date": "07/09/2026", "paid": True},
+        headers=auth_headers,
+    )
+
+    delete_res = client.delete(f"/api/clients/{client_id}", headers=auth_headers)
+    assert delete_res.status_code == 204
+    # No direct way to query orphaned lessons via the API — the absence of
+    # a 500 here (a real FK violation would raise one) is the assertion.

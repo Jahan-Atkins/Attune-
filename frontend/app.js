@@ -176,7 +176,7 @@ function clientCardHTML(c) {
   clientsCache[c.id] = c;
   const pct = c.sessions_total ? Math.round((c.sessions_completed / c.sessions_total) * 100) : 0;
   return `
-    <div class="client-card">
+    <div class="client-card" onclick="openClientDetail(${c.id})" style="cursor:pointer;">
       <div class="client-row">
         <div style="display:flex; gap:14px;">
           <div class="avatar avatar-sm avatar-${c.avatar_variant}">${escapeHtml(c.initials)}</div>
@@ -193,8 +193,8 @@ function clientCardHTML(c) {
       <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
       <p class="progress-text"><b>${c.sessions_completed}</b> of ${c.sessions_total} sessions completed · <b>$${c.amount_paid}</b> of $${c.amount_total} paid</p>
       <div class="card-actions">
-        <button class="action-btn" onclick="openClientForm(${c.id})">Edit</button>
-        <button class="action-btn danger" onclick="deleteClient(${c.id})">Delete</button>
+        <button class="action-btn" onclick="event.stopPropagation(); openClientForm(${c.id})">Edit</button>
+        <button class="action-btn danger" onclick="event.stopPropagation(); deleteClient(${c.id})">Delete</button>
       </div>
     </div>`;
 }
@@ -219,9 +219,12 @@ async function loadClients(status) {
   }
 }
 
+const DAY_ABBR = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+
 function openClientForm(id) {
   const c = id ? clientsCache[id] : null;
   const isEdit = !!c;
+  const selectedDays = c && c.available_days ? c.available_days.split(',').map(Number) : [];
   const body = `
     <form id="client-form" onsubmit="submitClientForm(event, ${id || 'null'})">
       <label class="field-label">Name</label>
@@ -261,6 +264,40 @@ function openClientForm(id) {
           <input class="field-input" id="cf-amount-total" type="number" min="0" step="0.01" value="${c ? c.amount_total : 0}">
         </div>
       </div>
+
+      <div class="divider" style="margin:18px -22px;"></div>
+
+      <label class="field-label" style="margin-top:0;">Address</label>
+      <input class="field-input" id="cf-address" placeholder="Optional" value="${c && c.address ? escapeAttr(c.address) : ''}">
+      <label class="field-label">Location type</label>
+      <input class="field-input" id="cf-location-type" placeholder="e.g. Client's Home, Studio Visit, Virtual" value="${c && c.location_type ? escapeAttr(c.location_type) : ''}">
+      <label class="field-label">Start date</label>
+      <input class="field-input" id="cf-start-date" placeholder="e.g. As soon as possible" value="${c && c.start_date ? escapeAttr(c.start_date) : ''}">
+      <label class="field-label">Lessons per week</label>
+      <input class="field-input" id="cf-lessons-per-week" type="number" min="0" value="${c && c.lessons_per_week != null ? c.lessons_per_week : ''}">
+      <label class="field-label">Days available</label>
+      <div id="cf-days" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
+        ${DAY_ABBR.map((label, i) => `<button type="button" class="cd-day-chip ${selectedDays.includes(i) ? 'active' : ''}" data-day="${i}" onclick="this.classList.toggle('active')">${label}</button>`).join('')}
+      </div>
+      <div class="field-row" style="margin-top:12px;">
+        <div>
+          <label class="field-label">Weekday times</label>
+          <div class="field-row">
+            <input class="field-input" id="cf-weekday-start" type="time" value="${c && c.weekday_start ? c.weekday_start : ''}">
+            <input class="field-input" id="cf-weekday-end" type="time" value="${c && c.weekday_end ? c.weekday_end : ''}">
+          </div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div>
+          <label class="field-label">Weekend times</label>
+          <div class="field-row">
+            <input class="field-input" id="cf-weekend-start" type="time" value="${c && c.weekend_start ? c.weekend_start : ''}">
+            <input class="field-input" id="cf-weekend-end" type="time" value="${c && c.weekend_end ? c.weekend_end : ''}">
+          </div>
+        </div>
+      </div>
+
       <div id="cf-error" class="form-error" style="display:none; margin-top:12px;"></div>
       <button class="pill pill-solid pill-block" type="submit" style="margin-top:16px;">${isEdit ? 'Save Changes' : 'Add Client'}</button>
     </form>`;
@@ -278,6 +315,8 @@ async function submitClientForm(evt, id) {
     errorEl.style.display = 'block';
     return;
   }
+  const activeDays = Array.from(document.querySelectorAll('#cf-days .cd-day-chip.active')).map(b => b.dataset.day);
+  const lessonsPerWeekRaw = document.getElementById('cf-lessons-per-week').value.trim();
   const payload = {
     name,
     initials,
@@ -288,6 +327,15 @@ async function submitClientForm(evt, id) {
     sessions_total: Number(document.getElementById('cf-total').value) || 0,
     amount_paid: Number(document.getElementById('cf-paid').value) || 0,
     amount_total: Number(document.getElementById('cf-amount-total').value) || 0,
+    address: document.getElementById('cf-address').value.trim() || null,
+    location_type: document.getElementById('cf-location-type').value.trim() || null,
+    start_date: document.getElementById('cf-start-date').value.trim() || null,
+    lessons_per_week: lessonsPerWeekRaw ? Number(lessonsPerWeekRaw) : null,
+    available_days: activeDays.length ? activeDays.join(',') : null,
+    weekday_start: document.getElementById('cf-weekday-start').value || null,
+    weekday_end: document.getElementById('cf-weekday-end').value || null,
+    weekend_start: document.getElementById('cf-weekend-start').value || null,
+    weekend_end: document.getElementById('cf-weekend-end').value || null,
   };
   try {
     if (id) {
@@ -297,6 +345,7 @@ async function submitClientForm(evt, id) {
     }
     closeModal();
     await Promise.all([loadClients('current'), loadClients('past'), loadSummary()]);
+    if (id && currentClientDetailId === id) await openClientDetail(id);
   } catch (err) {
     errorEl.textContent = err.message || 'Could not save client.';
     errorEl.style.display = 'block';
@@ -315,13 +364,168 @@ async function deleteClient(id) {
 }
 
 /* =========================================================
+   CLIENT DETAIL
+   ========================================================= */
+let currentClientDetail = null;
+let currentClientDetailId = null;
+
+async function openClientDetail(id) {
+  try {
+    const c = await apiFetch(`/api/clients/${id}`);
+    clientsCache[id] = c;
+    currentClientDetail = c;
+    currentClientDetailId = id;
+    renderClientDetail(c);
+    goToScreen('client-detail');
+  } catch (err) {
+    alert(err.message || 'Could not load this client.');
+  }
+}
+
+function renderClientDetail(c) {
+  document.getElementById('cd-avatar').textContent = escapeHtml(c.initials);
+  document.getElementById('cd-avatar').className = `avatar avatar-sm avatar-${c.avatar_variant}`;
+  document.getElementById('cd-name').textContent = c.name;
+  document.getElementById('cd-id').textContent = `ID ${String(c.id).padStart(6, '0')}`;
+  const badge = document.getElementById('cd-status-badge');
+  badge.textContent = c.status === 'current' ? 'Matched' : 'Past';
+  badge.classList.toggle('past', c.status !== 'current');
+
+  document.getElementById('cd-total-pay').textContent = `$${c.amount_total}`;
+  document.getElementById('cd-session-pack').textContent = `${c.sessions_total} session${c.sessions_total === 1 ? '' : 's'}`;
+  const pct = c.sessions_total ? Math.round((c.sessions_completed / c.sessions_total) * 100) : 0;
+  document.getElementById('cd-progress-fill').style.width = `${pct}%`;
+  document.getElementById('cd-progress-text').innerHTML =
+    `<b>${c.sessions_completed}</b> of ${c.sessions_total} sessions completed · <b>$${c.amount_paid}</b> of $${c.amount_total} paid`;
+  const rateEl = document.getElementById('cd-per-session-rate');
+  rateEl.textContent = c.sessions_total ? `Get paid $${(c.amount_total / c.sessions_total).toFixed(0)} per session` : '';
+
+  const locationEl = document.getElementById('cd-location-block');
+  if (c.address || c.location_type) {
+    locationEl.innerHTML = `
+      ${c.address ? `<div class="cd-info-row"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12Z"/><circle cx="12" cy="9" r="2.4"/></svg><p>${escapeHtml(c.address)}</p></div>` : ''}
+      ${c.location_type ? `<div class="cd-info-row"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9h12v-9"/></svg><p>${escapeHtml(c.location_type)}</p></div>` : ''}`;
+  } else {
+    locationEl.innerHTML = `<p class="empty-copy" style="text-align:left; margin:0; max-width:none;">No location on file yet.</p>`;
+  }
+
+  const availEl = document.getElementById('cd-availability-block');
+  if (c.start_date || c.lessons_per_week || c.available_days || c.weekday_start || c.weekend_start) {
+    const selectedDays = c.available_days ? c.available_days.split(',').map(Number) : [];
+    const dayChips = DAY_ABBR.map((label, i) => `<span class="cd-day-chip ${selectedDays.includes(i) ? 'active' : ''}">${label}</span>`).join('');
+    availEl.innerHTML = `
+      <div class="card" style="padding:18px 20px;">
+        <div class="field-row">
+          <div><p class="next-label" style="text-align:left;">Start Date</p><p class="client-name" style="font-size:14px;">${c.start_date ? escapeHtml(c.start_date) : '—'}</p></div>
+          <div><p class="next-label" style="text-align:left;">Lessons / Week</p><p class="client-name" style="font-size:14px;">${c.lessons_per_week != null ? c.lessons_per_week + ' Lessons' : '—'}</p></div>
+        </div>
+        <p class="next-label" style="text-align:left; margin-top:14px;">Days available</p>
+        <div style="margin-top:6px;">${dayChips}</div>
+        ${c.weekday_start ? `<p class="next-label" style="text-align:left; margin-top:14px;">Weekday times available</p><p class="client-name" style="font-size:14px;">${c.weekday_start} – ${c.weekday_end || '?'}</p>` : ''}
+        ${c.weekend_start ? `<p class="next-label" style="text-align:left; margin-top:10px;">Weekend times available</p><p class="client-name" style="font-size:14px;">${c.weekend_start} – ${c.weekend_end || '?'}</p>` : ''}
+      </div>`;
+  } else {
+    availEl.innerHTML = `<p class="empty-copy" style="text-align:left; margin:0; max-width:none;">No availability on file yet.</p>`;
+  }
+
+  const lessonsListEl = document.getElementById('cd-lessons-list');
+  const lessonsEmptyEl = document.getElementById('cd-lessons-empty');
+  if (c.lessons && c.lessons.length) {
+    lessonsListEl.innerHTML = c.lessons.map(l => `
+      <div class="cd-lesson-row">
+        <div class="cd-lesson-badge">${l.lesson_number}</div>
+        <div style="flex:1;">
+          <p class="client-name" style="font-size:14px;">Lesson ${String(l.lesson_number).padStart(2, '0')}</p>
+          <p class="${l.paid ? 'cd-lesson-paid' : 'cd-lesson-unpaid'}">${l.paid ? 'Paid' : 'Unpaid'}</p>
+        </div>
+        ${l.date ? `<p class="next-value" style="color:var(--brass);">${escapeHtml(l.date)}</p>` : ''}
+        <button class="icon-btn" aria-label="Remove lesson" onclick="deleteClientLesson(${l.id})"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>`).join('');
+    lessonsEmptyEl.style.display = 'none';
+  } else {
+    lessonsListEl.innerHTML = '';
+    lessonsEmptyEl.style.display = 'block';
+  }
+}
+
+function editClientFromDetail() {
+  openClientForm(currentClientDetailId);
+}
+
+async function deleteClientFromDetail() {
+  if (!currentClientDetailId) return;
+  if (!confirm("Delete this client? This can't be undone.")) return;
+  try {
+    await apiFetch(`/api/clients/${currentClientDetailId}`, { method: 'DELETE' });
+    await Promise.all([loadClients('current'), loadClients('past'), loadSummary()]);
+    goToScreen('clients');
+  } catch (err) {
+    alert(err.message || 'Could not delete client.');
+  }
+}
+
+function contactClientStub() {
+  alert("Messaging isn't wired up in this demo yet — it'd send to the client's account here.");
+}
+
+function openAddLessonForm() {
+  const nextNumber = currentClientDetail && currentClientDetail.lessons ? currentClientDetail.lessons.length + 1 : 1;
+  const body = `
+    <form id="lesson-form" onsubmit="submitAddLessonForm(event)">
+      <label class="field-label">Lesson number</label>
+      <input class="field-input" id="lf-number" type="number" min="1" required value="${nextNumber}">
+      <label class="field-label">Date</label>
+      <input class="field-input" id="lf-date" placeholder="e.g. 07/09/2026">
+      <label style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:14px; cursor:pointer;">
+        <input type="checkbox" id="lf-paid"> Paid
+      </label>
+      <div id="lf-error" class="form-error" style="display:none; margin-top:12px;"></div>
+      <button class="pill pill-solid pill-block" type="submit" style="margin-top:16px;">Add Lesson</button>
+    </form>`;
+  openModal('Add Lesson', body);
+}
+
+async function submitAddLessonForm(evt) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('lf-error');
+  errorEl.style.display = 'none';
+  const payload = {
+    lesson_number: Number(document.getElementById('lf-number').value) || 1,
+    date: document.getElementById('lf-date').value.trim() || null,
+    paid: document.getElementById('lf-paid').checked,
+  };
+  try {
+    await apiFetch(`/api/clients/${currentClientDetailId}/lessons`, { method: 'POST', body: JSON.stringify(payload) });
+    closeModal();
+    await openClientDetail(currentClientDetailId);
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not add lesson.';
+    errorEl.style.display = 'block';
+  }
+}
+
+async function deleteClientLesson(lessonId) {
+  if (!confirm('Remove this lesson entry?')) return;
+  try {
+    await apiFetch(`/api/clients/${currentClientDetailId}/lessons/${lessonId}`, { method: 'DELETE' });
+    await openClientDetail(currentClientDetailId);
+  } catch (err) {
+    alert(err.message || 'Could not remove lesson.');
+  }
+}
+
+/* =========================================================
    SESSIONS
    ========================================================= */
 let sessionsCache = {};
+let sessionFilterDays = [];
+let sessionFilterMaxLessons = null;
+let sessionSort = 'newest';
 
 function sessionCardHTML(s) {
   sessionsCache[s.id] = s;
-  const meta = [s.date, s.location].filter(Boolean).join(' · ');
+  const dayLabel = s.day_of_week != null ? DAY_ABBR[s.day_of_week] : null;
+  const meta = [s.date, s.location, dayLabel, s.city].filter(Boolean).join(' · ');
   const actionBtn = s.status === 'open'
     ? `<button class="action-btn primary" onclick="requestSession(${s.id})">Request</button>`
     : `<button class="action-btn primary" onclick="withdrawSession(${s.id})">Withdraw</button>`;
@@ -346,7 +550,13 @@ async function loadSessions(status) {
   const listEl = document.getElementById(`sessions-${status}-list`);
   const emptyEl = document.getElementById(`sessions-${status}-empty`);
   try {
-    const data = await apiFetch(`/api/sessions?status=${status}`);
+    const params = new URLSearchParams({ status });
+    if (status === 'open') {
+      sessionFilterDays.forEach(d => params.append('days', d));
+      if (sessionFilterMaxLessons != null) params.set('max_lessons_per_week', sessionFilterMaxLessons);
+      params.set('sort', sessionSort);
+    }
+    const data = await apiFetch(`/api/sessions?${params.toString()}`);
     if (data.length === 0) {
       listEl.innerHTML = '';
       emptyEl.style.display = 'block';
@@ -361,9 +571,10 @@ async function loadSessions(status) {
   }
 }
 
-function openSessionForm(id) {
+async function openSessionForm(id) {
   const s = id ? sessionsCache[id] : null;
   const isEdit = !!s;
+  const cities = await loadCities();
   const body = `
     <form id="session-form" onsubmit="submitSessionForm(event, ${id || 'null'})">
       <label class="field-label">Title</label>
@@ -380,6 +591,24 @@ function openSessionForm(id) {
       </div>
       <label class="field-label">Location</label>
       <input class="field-input" id="sf-location" value="${s && s.location ? escapeAttr(s.location) : ''}">
+      <div class="field-row">
+        <div>
+          <label class="field-label">Day of week</label>
+          <select class="field-select" id="sf-day">
+            <option value="">Not set</option>
+            ${DAY_ABBR.map((label, i) => `<option value="${i}" ${s && s.day_of_week === i ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Lessons per week</label>
+          <input class="field-input" id="sf-lessons-per-week" type="number" min="0" value="${s && s.lessons_per_week != null ? s.lessons_per_week : ''}">
+        </div>
+      </div>
+      <label class="field-label">City</label>
+      <select class="field-select" id="sf-city">
+        <option value="">Not set</option>
+        ${cities.map(c => `<option value="${c}" ${s && s.city === c ? 'selected' : ''}>${c}</option>`).join('')}
+      </select>
       <label class="field-label">Notes</label>
       <textarea class="field-textarea" id="sf-notes">${s && s.notes ? escapeHtml(s.notes) : ''}</textarea>
       <div id="sf-error" class="form-error" style="display:none; margin-top:12px;"></div>
@@ -398,6 +627,8 @@ async function submitSessionForm(evt, id) {
     errorEl.style.display = 'block';
     return;
   }
+  const dayRaw = document.getElementById('sf-day').value;
+  const lessonsRaw = document.getElementById('sf-lessons-per-week').value.trim();
   const payload = {
     title,
     status: (id && sessionsCache[id]) ? sessionsCache[id].status : 'open',
@@ -405,6 +636,9 @@ async function submitSessionForm(evt, id) {
     location: document.getElementById('sf-location').value.trim() || null,
     pay_rate: document.getElementById('sf-pay').value.trim() || null,
     notes: document.getElementById('sf-notes').value.trim() || null,
+    day_of_week: dayRaw ? Number(dayRaw) : null,
+    lessons_per_week: lessonsRaw ? Number(lessonsRaw) : null,
+    city: document.getElementById('sf-city').value || null,
   };
   try {
     if (id) {
@@ -418,6 +652,81 @@ async function submitSessionForm(evt, id) {
     errorEl.textContent = err.message || 'Could not save session.';
     errorEl.style.display = 'block';
   }
+}
+
+function openSessionFilterModal() {
+  const body = `
+    <p class="field-label" style="margin-top:0;">Days Available</p>
+    <div id="filter-days" style="display:flex; flex-wrap:wrap; gap:6px;">
+      ${DAY_ABBR.map((label, i) => `<button type="button" class="cd-day-chip ${sessionFilterDays.includes(i) ? 'active' : ''}" data-day="${i}" onclick="this.classList.toggle('active')" style="width:auto; padding:0 12px;">${label}</button>`).join('')}
+    </div>
+    <p class="field-label">Max. lessons per week</p>
+    <div id="filter-max-lessons" style="display:flex; flex-wrap:wrap; gap:6px;">
+      ${[1, 2, 3, 4, 5, 6, 7].map(n => `<button type="button" class="cd-day-chip ${sessionFilterMaxLessons === n ? 'active' : ''}" data-max="${n}" onclick="selectFilterMaxLessons(${n}, this)" style="width:38px; border-radius:999px;">${n}</button>`).join('')}
+    </div>
+    <div style="display:flex; gap:10px; margin-top:20px;">
+      <button type="button" class="pill pill-outline" style="flex:1;" onclick="clearSessionFilters()">Clear</button>
+      <button type="button" class="pill pill-solid" style="flex:1;" onclick="applySessionFilters()">Apply Filters</button>
+    </div>`;
+  openModal('Filter by', body);
+}
+
+function selectFilterMaxLessons(n, btn) {
+  const alreadyActive = btn.classList.contains('active');
+  document.querySelectorAll('#filter-max-lessons .cd-day-chip').forEach(b => b.classList.remove('active'));
+  if (!alreadyActive) btn.classList.add('active');
+}
+
+function clearSessionFilters() {
+  sessionFilterDays = [];
+  sessionFilterMaxLessons = null;
+  closeModal();
+  loadSessions('open');
+}
+
+async function applySessionFilters() {
+  sessionFilterDays = Array.from(document.querySelectorAll('#filter-days .cd-day-chip.active')).map(b => Number(b.dataset.day));
+  const activeMax = document.querySelector('#filter-max-lessons .cd-day-chip.active');
+  sessionFilterMaxLessons = activeMax ? Number(activeMax.dataset.max) : null;
+  closeModal();
+  await loadSessions('open');
+}
+
+function openSessionSortModal() {
+  const options = [
+    { value: 'newest', label: 'Newest' },
+    { value: 'nearest', label: 'Nearest' },
+    { value: 'oldest', label: 'Oldest' },
+    { value: 'farthest', label: 'Farthest' },
+  ];
+  const body = `
+    <div id="sort-options">
+      ${options.map(o => `
+        <div class="list-row" data-sort="${o.value}" onclick="selectSortOption('${o.value}')" style="cursor:pointer;">
+          <span style="flex:1;">${o.label}</span>
+          <span class="sort-check" style="width:20px; height:20px; border-radius:999px; background:${sessionSort === o.value ? 'var(--plum)' : 'transparent'}; display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px;">${sessionSort === o.value ? '✓' : ''}</span>
+        </div>`).join('')}
+    </div>
+    <button type="button" class="pill pill-solid pill-block" style="width:100%; margin-top:20px;" onclick="applySessionSort()">Sort</button>`;
+  openModal('Sort by', body);
+}
+
+let pendingSortSelection = null;
+
+function selectSortOption(value) {
+  pendingSortSelection = value;
+  document.querySelectorAll('#sort-options .list-row').forEach(row => {
+    const check = row.querySelector('.sort-check');
+    const isSelected = row.dataset.sort === value;
+    check.style.background = isSelected ? 'var(--plum)' : 'transparent';
+    check.textContent = isSelected ? '✓' : '';
+  });
+}
+
+async function applySessionSort() {
+  sessionSort = pendingSortSelection || sessionSort;
+  closeModal();
+  await loadSessions('open');
 }
 
 async function deleteSession(id) {

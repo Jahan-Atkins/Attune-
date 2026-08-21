@@ -111,6 +111,26 @@ p{margin:0;}
 .chip{display:inline-block; padding:8px 16px; border-radius:999px; background:#EFE8DC; color:var(--ink); font-size:13px; font-weight:600; border:none;}
 .divider{height:10px; background:#EDE7DD; margin:14px -20px 18px;}
 
+/* ---- CLIENT DETAIL ---- */
+.cd-status-badge{background:var(--sage-light); color:var(--plum-dark);}
+.cd-status-badge.past{background:#EFE8DC; color:var(--muted);}
+.cd-stat-card{margin-top:18px;}
+.cd-stat-row{display:flex; justify-content:space-around; text-align:center;}
+.cd-stat-value{font-family:'Fraunces',serif; font-weight:700; font-size:24px; margin-top:4px;}
+.cd-stat-value-sage{color:var(--sage);}
+.cd-rate-line{font-size:12.5px; color:var(--brass); font-weight:600; margin-top:8px;}
+.cd-section-title{font-size:16px; margin-top:22px;}
+.cd-section-title .ti-script{font-size:20px;}
+.cd-info-row{display:flex; align-items:center; gap:12px; background:#fff; border:1.4px solid #efe8dc; border-radius:16px; padding:14px 16px; margin-bottom:10px;}
+.cd-info-row svg{width:18px; height:18px; stroke:var(--brass); flex-shrink:0;}
+.cd-info-row p{font-size:14px; font-weight:600;}
+.cd-day-chip{display:inline-flex; align-items:center; justify-content:center; width:38px; height:32px; border-radius:8px; border:1.4px solid #e9e2d5; font-size:12px; font-weight:700; color:var(--muted); margin-right:6px;}
+.cd-day-chip.active{border-color:var(--sage); color:var(--sage); background:var(--sage-light);}
+.cd-lesson-row{display:flex; align-items:center; gap:12px; background:#fff; border:1.4px solid #efe8dc; border-radius:16px; padding:12px 14px; margin-bottom:10px;}
+.cd-lesson-badge{width:32px; height:32px; border-radius:999px; background:var(--brass); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; flex-shrink:0;}
+.cd-lesson-paid{font-size:12px; font-weight:700; color:var(--sage);}
+.cd-lesson-unpaid{font-size:12px; font-weight:700; color:var(--muted);}
+
 /* ---- PROFILE ---- */
 .hero-profile{background:linear-gradient(165deg,var(--brass) 0%, var(--brass-light) 100%); padding-bottom:26px; text-align:center; color:#fff;}
 .avatar-wrap{position:relative; display:inline-block; margin-top:6px;}

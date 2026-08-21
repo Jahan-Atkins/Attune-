@@ -3,7 +3,23 @@ Pydantic schemas — these describe the *shape of JSON* going in and out
 of the API, separate from models.py (which describes the database).
 """
 from pydantic import BaseModel, ConfigDict, EmailStr
-from typing import Optional
+from datetime import datetime
+from typing import List, Optional
+
+
+class ClientLessonBase(BaseModel):
+    lesson_number: int
+    date: Optional[str] = None
+    paid: bool = False
+
+
+class ClientLessonCreate(ClientLessonBase):
+    pass
+
+
+class ClientLessonOut(ClientLessonBase):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ClientBase(BaseModel):
@@ -16,6 +32,15 @@ class ClientBase(BaseModel):
     sessions_total: int = 0
     amount_paid: float = 0
     amount_total: float = 0
+    address: Optional[str] = None
+    location_type: Optional[str] = None
+    start_date: Optional[str] = None
+    lessons_per_week: Optional[int] = None
+    available_days: Optional[str] = None  # comma-separated day-of-week ints, "0,2,3,5"
+    weekday_start: Optional[str] = None
+    weekday_end: Optional[str] = None
+    weekend_start: Optional[str] = None
+    weekend_end: Optional[str] = None
 
 
 class ClientCreate(ClientBase):
@@ -24,6 +49,7 @@ class ClientCreate(ClientBase):
 
 class ClientOut(ClientBase):
     id: int
+    lessons: List[ClientLessonOut] = []
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -34,6 +60,9 @@ class SessionListingBase(BaseModel):
     location: Optional[str] = None
     pay_rate: Optional[str] = None
     notes: Optional[str] = None
+    day_of_week: Optional[int] = None  # 0=Monday ... 6=Sunday
+    lessons_per_week: Optional[int] = None
+    city: Optional[str] = None  # one of geo.DEMO_CITIES' names — write-only, resolved to lat/lng server-side
 
 
 class SessionListingCreate(SessionListingBase):
@@ -43,6 +72,7 @@ class SessionListingCreate(SessionListingBase):
 class SessionListingOut(SessionListingBase):
     id: int
     requested_by_id: Optional[int] = None
+    created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 

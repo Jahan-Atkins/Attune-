@@ -95,8 +95,8 @@
         <button class="icon-btn" onclick="goToScreen('home')" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M15 5 8 12l7 7"/></svg></button>
         <h1 class="topbar-title">Session Openings</h1>
         <div class="topbar-actions">
-          <button class="icon-btn" aria-label="Filter"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="1.6" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="10" cy="17" r="1.6" fill="currentColor" stroke="none"/></svg></button>
-          <button class="icon-btn" aria-label="Sort"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14M8 5 4 9M8 5l4 4"/><path d="M16 19V5M16 19l4-4M16 19l-4-4"/></svg></button>
+          <button class="icon-btn" aria-label="Filter" onclick="openSessionFilterModal()"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="1.6" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="10" cy="17" r="1.6" fill="currentColor" stroke="none"/></svg></button>
+          <button class="icon-btn" aria-label="Sort" onclick="openSessionSortModal()"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14M8 5 4 9M8 5l4 4"/><path d="M16 19V5M16 19l4-4M16 19l-4-4"/></svg></button>
         </div>
       </div>
       <div class="subtabs">
@@ -179,6 +179,60 @@
             </div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ============ CLIENT DETAIL ============ -->
+    <section class="screen" id="screen-client-detail">
+      <div class="topbar topbar-sage">
+        <button class="icon-btn" onclick="goToScreen('clients')" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M15 5 8 12l7 7"/></svg></button>
+        <h1 class="topbar-title">Client Details</h1>
+        <div style="width:22px;"></div>
+      </div>
+      <div class="content">
+        <div class="client-row">
+          <div style="display:flex; gap:14px; align-items:center;">
+            <div class="avatar avatar-sm avatar-c1" id="cd-avatar">··</div>
+            <div>
+              <p class="client-name" id="cd-name">—</p>
+              <p class="client-id" id="cd-id">ID 000000</p>
+            </div>
+          </div>
+          <span class="chip cd-status-badge" id="cd-status-badge">Matched</span>
+        </div>
+
+        <div class="card cd-stat-card">
+          <div class="cd-stat-row">
+            <div>
+              <p class="next-label">Total Pay</p>
+              <p class="cd-stat-value cd-stat-value-sage" id="cd-total-pay">$0</p>
+            </div>
+            <div>
+              <p class="next-label">Session Pack</p>
+              <p class="cd-stat-value" id="cd-session-pack">0 sessions</p>
+            </div>
+          </div>
+          <div class="progress-track" style="margin-top:18px;"><div class="progress-fill" id="cd-progress-fill" style="width:0%"></div></div>
+          <p class="progress-text" id="cd-progress-text">0 of 0 sessions completed · $0 of $0 paid</p>
+          <p class="cd-rate-line" id="cd-per-session-rate"></p>
+        </div>
+
+        <h2 class="section-title cd-section-title"><span class="ti-bold">CLIENT</span><span class="ti-script">Location</span></h2>
+        <div id="cd-location-block"></div>
+
+        <h2 class="section-title cd-section-title"><span class="ti-bold">CLIENT</span><span class="ti-script">Availability</span></h2>
+        <div id="cd-availability-block"></div>
+
+        <h2 class="section-title cd-section-title"><span class="ti-bold">LESSONS</span><span class="ti-script">Schedule</span></h2>
+        <button class="pill pill-outline" style="margin-bottom:12px;" onclick="openAddLessonForm()">+ Add Lesson</button>
+        <div id="cd-lessons-list"></div>
+        <div id="cd-lessons-empty" style="display:none;"><p class="empty-copy">No lessons logged yet.</p></div>
+
+        <div style="display:flex; gap:8px; margin-top:18px;">
+          <button class="action-btn" style="flex:1;" onclick="editClientFromDetail()">Edit Client</button>
+          <button class="action-btn danger" style="flex:1;" onclick="deleteClientFromDetail()">Delete</button>
+        </div>
+        <button class="pill pill-solid pill-block" style="width:100%; margin-top:14px;" onclick="contactClientStub()">Contact Client</button>
       </div>
     </section>
 
