@@ -31,7 +31,7 @@ scale.
 3. **Reviews & ratings** ✅ done — depends on #2
 4. **Rebook the same instructor** ✅ done — depends on #2, and its
    `preferred_instructor_id` mechanism is reused by #5
-5. **Recurring bookings** — depends on #4's targeting mechanism
+5. **Recurring bookings** ✅ done — depends on #4's targeting mechanism
 6. **Notifications** — touches every feature above as a trigger point, so
    building it last means one integration pass instead of five
 
@@ -254,7 +254,32 @@ pending/broadcast/confirm machinery rather than needing a parallel path.
 
 ---
 
-## Part 5 — Recurring bookings
+## Part 5 — Recurring bookings ✅ done
+
+Built as designed below, with two additions not called out explicitly
+in the original plan:
+
+- `LessonRequest` needed a real `occurrence_date` ("YYYY-MM-DD") column.
+  The original plan didn't specify how weekly-generated rows would be
+  distinguishable from each other — this app's `LessonRequest` never
+  stored a real calendar date anywhere before (only `day_of_week`), so
+  without this, four generated Tuesday-5pm rows would be indistinguishable
+  and `ensure_upcoming_occurrences` couldn't tell which weeks already
+  have an occurrence.
+- `Client` gained a `customer_id` FK (nullable, server-set only — never
+  accepted through `ClientCreate`/`ClientBase`, so an instructor can't
+  forge a link to an arbitrary customer via "+ Add Client"). The Client
+  Details page's "Recurring: every Tuesday" indicator needs a reliable
+  way to find "does this client have an active series," and `email`/
+  `phone` alone aren't safe for that — an instructor can freely edit
+  those via "Edit Client", but never `customer_id`.
+
+Verified end-to-end in-browser: creating a series generated exactly 4
+weekly occurrences with correct dates, they showed up tagged "Recurring"
+in History with rebook/make-standing actions correctly hidden, pause
+stopped new generation, and the instructor's Client Details page showed
+the live indicator and lost it after "Stop Hosting". Covered by 15 new
+tests in `test_recurring_series.py`.
 
 The most architecturally involved of the five. Builds directly on Part
 4's targeting mechanism.

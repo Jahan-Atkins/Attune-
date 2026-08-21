@@ -20,6 +20,7 @@ from ..database import get_db
 from ..matching import has_overlap
 from ..security import get_current_customer
 from .bookings import _mock_charge
+from .recurring_series import ensure_upcoming_occurrences
 
 router = APIRouter(prefix="/api/customer/lesson-requests", tags=["lesson-requests"])
 
@@ -157,7 +158,17 @@ def list_my_lesson_requests(
 ):
     """Full history, newest first — used for "past matches" (leave a
     review, book again), not just the single latest one /me returns.
-    Same shape as bookings.py's list endpoint."""
+    Same shape as bookings.py's list endpoint. Also lazily generates any
+    due occurrences for this customer's own active recurring series
+    before returning — see recurring_series.py's module docstring."""
+    active_series = (
+        db.query(models.RecurringSeries)
+        .filter(models.RecurringSeries.customer_id == customer.id, models.RecurringSeries.status == "active")
+        .all()
+    )
+    for series in active_series:
+        ensure_upcoming_occurrences(db, series)
+
     return (
         db.query(models.LessonRequest)
         .filter(models.LessonRequest.customer_id == customer.id)

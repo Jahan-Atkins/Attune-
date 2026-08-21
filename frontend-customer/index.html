@@ -253,11 +253,22 @@
   <section class="screen" id="screen-history">
     <div class="wizard-header">
       <button class="back-link" onclick="goToScreen('match')">← Back</button>
-      <p class="step-label">My Bookings</p>
+      <button class="back-link" onclick="openRecurringScreen()">Recurring Bookings →</button>
     </div>
     <h2 class="step-title">Past requests</h2>
     <div id="history-list" style="max-width:480px; margin:0 auto;"></div>
     <p class="card-sub" id="history-empty" style="display:none;">Nothing here yet.</p>
+  </section>
+
+  <!-- ============ RECURRING BOOKINGS ============ -->
+  <section class="screen" id="screen-recurring">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goToScreen('history')">← Back</button>
+      <p class="step-label">Standing Bookings</p>
+    </div>
+    <h2 class="step-title">Recurring bookings</h2>
+    <div id="recurring-list" style="max-width:480px; margin:0 auto;"></div>
+    <p class="card-sub" id="recurring-empty" style="display:none;">No standing bookings yet — make one from a past matched lesson.</p>
   </section>
 
 </main>

@@ -385,8 +385,40 @@ async function openClientDetail(id) {
     currentClientDetailId = id;
     renderClientDetail(c);
     goToScreen('client-detail');
+    loadClientRecurringIndicator(c.customer_id); // separate fetch, non-blocking — a hand-added client has no customer_id at all
   } catch (err) {
     alert(err.message || 'Could not load this client.');
+  }
+}
+
+const RECURRING_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+async function loadClientRecurringIndicator(customerId) {
+  const el = document.getElementById('cd-recurring-block');
+  el.innerHTML = '';
+  if (!customerId) return;
+  try {
+    const series = await apiFetch('/api/recurring-series');
+    const match = series.find(s => s.customer_id === customerId && s.status !== 'cancelled');
+    if (!match) return;
+    const statusNote = match.status === 'paused' ? ' (paused)' : '';
+    el.innerHTML = `
+      <div class="card" style="padding:14px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:4px;">
+        <p class="client-name" style="font-size:14px; margin:0;">Recurring: every ${RECURRING_DAY_NAMES[match.day_of_week]}, ${match.start_time}${statusNote}</p>
+        <button class="pill pill-outline" style="flex-shrink:0;" onclick="cancelHostedRecurringSeries(${match.id})">Stop Hosting</button>
+      </div>`;
+  } catch (err) {
+    console.error('Failed to load recurring series for client:', err);
+  }
+}
+
+async function cancelHostedRecurringSeries(seriesId) {
+  if (!confirm("Stop hosting this client's standing weekly booking? No new lessons will be generated from it.")) return;
+  try {
+    await apiFetch(`/api/recurring-series/${seriesId}/cancel`, { method: 'PUT' });
+    if (currentClientDetail) loadClientRecurringIndicator(currentClientDetail.customer_id);
+  } catch (err) {
+    alert(err.message || 'Could not stop this recurring booking.');
   }
 }
 
