@@ -124,6 +124,56 @@ def test_delete_client_lesson(client, auth_headers):
     assert get_res.json()["lessons"] == []
 
 
+def test_toggle_lesson_paid_status(client, auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+    lesson_res = client.post(
+        f"/api/clients/{client_id}/lessons",
+        json={"lesson_number": 1, "date": "07/09/2026", "paid": False},
+        headers=auth_headers,
+    )
+    lesson_id = lesson_res.json()["id"]
+
+    res = client.put(
+        f"/api/clients/{client_id}/lessons/{lesson_id}/paid", json={"paid": True}, headers=auth_headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["paid"] is True
+
+    get_res = client.get(f"/api/clients/{client_id}", headers=auth_headers)
+    assert get_res.json()["lessons"][0]["paid"] is True
+
+    # And back the other way — this isn't a one-shot action.
+    res = client.put(
+        f"/api/clients/{client_id}/lessons/{lesson_id}/paid", json={"paid": False}, headers=auth_headers,
+    )
+    assert res.json()["paid"] is False
+
+
+def test_cannot_toggle_lesson_paid_on_another_instructors_client(client, auth_headers, second_auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+    lesson_res = client.post(
+        f"/api/clients/{client_id}/lessons",
+        json={"lesson_number": 1, "date": "07/09/2026", "paid": False},
+        headers=auth_headers,
+    )
+    lesson_id = lesson_res.json()["id"]
+
+    res = client.put(
+        f"/api/clients/{client_id}/lessons/{lesson_id}/paid", json={"paid": True}, headers=second_auth_headers,
+    )
+    assert res.status_code == 404
+
+
+def test_toggle_lesson_paid_404_for_unknown_lesson(client, auth_headers):
+    create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
+    client_id = create_res.json()["id"]
+
+    res = client.put(f"/api/clients/{client_id}/lessons/999999/paid", json={"paid": True}, headers=auth_headers)
+    assert res.status_code == 404
+
+
 def test_cannot_add_lesson_to_another_instructors_client(client, auth_headers, second_auth_headers):
     create_res = client.post("/api/clients", json=CLIENT_PAYLOAD, headers=auth_headers)
     client_id = create_res.json()["id"]

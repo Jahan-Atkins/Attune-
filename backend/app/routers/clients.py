@@ -102,6 +102,17 @@ def add_client_lesson(
     return lesson
 
 
+def _get_owned_lesson(client: models.Client, lesson_id: int, db: Session) -> models.ClientLesson:
+    lesson = (
+        db.query(models.ClientLesson)
+        .filter(models.ClientLesson.id == lesson_id, models.ClientLesson.client_id == client.id)
+        .first()
+    )
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    return lesson
+
+
 @router.delete("/{client_id}/lessons/{lesson_id}", status_code=204)
 def delete_client_lesson(
     client_id: int,
@@ -110,13 +121,26 @@ def delete_client_lesson(
     instructor: models.Instructor = Depends(get_current_instructor),
 ):
     client = _get_owned_client(client_id, db, instructor)
-    lesson = (
-        db.query(models.ClientLesson)
-        .filter(models.ClientLesson.id == lesson_id, models.ClientLesson.client_id == client.id)
-        .first()
-    )
-    if not lesson:
-        raise HTTPException(status_code=404, detail="Lesson not found")
+    lesson = _get_owned_lesson(client, lesson_id, db)
     db.delete(lesson)
     db.commit()
     return None
+
+
+@router.put("/{client_id}/lessons/{lesson_id}/paid", response_model=schemas.ClientLessonOut)
+def set_client_lesson_paid(
+    client_id: int,
+    lesson_id: int,
+    payload: schemas.ClientLessonPaidUpdate,
+    db: Session = Depends(get_db),
+    instructor: models.Instructor = Depends(get_current_instructor),
+):
+    """Flips one lesson's paid status. Previously there was no way to
+    change this after adding the lesson — the Paid/Unpaid checkbox on
+    "+ Add Lesson" set it once and that was permanent."""
+    client = _get_owned_client(client_id, db, instructor)
+    lesson = _get_owned_lesson(client, lesson_id, db)
+    lesson.paid = payload.paid
+    db.commit()
+    db.refresh(lesson)
+    return lesson

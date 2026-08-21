@@ -195,10 +195,6 @@ function clientCardHTML(c) {
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
       <p class="progress-text"><b>${c.sessions_completed}</b> of ${c.sessions_total} sessions completed · <b>$${c.amount_paid}</b> of $${c.amount_total} paid</p>
-      <div class="card-actions">
-        <button class="action-btn" onclick="event.stopPropagation(); openClientForm(${c.id})">Edit</button>
-        <button class="action-btn danger" onclick="event.stopPropagation(); deleteClient(${c.id})">Delete</button>
-      </div>
     </div>`;
 }
 
@@ -361,17 +357,6 @@ async function submitClientForm(evt, id) {
   }
 }
 
-async function deleteClient(id) {
-  if (!confirm("Delete this client? This can't be undone.")) return;
-  try {
-    await apiFetch(`/api/clients/${id}`, { method: 'DELETE' });
-    closeModal();
-    await Promise.all([loadClients('current'), loadClients('past'), loadSummary()]);
-  } catch (err) {
-    alert(err.message || 'Could not delete client.');
-  }
-}
-
 /* =========================================================
    CLIENT DETAIL
    ========================================================= */
@@ -486,7 +471,7 @@ function renderClientDetail(c) {
         <div class="cd-lesson-badge">${l.lesson_number}</div>
         <div style="flex:1;">
           <p class="client-name" style="font-size:14px;">Lesson ${String(l.lesson_number).padStart(2, '0')}</p>
-          <p class="${l.paid ? 'cd-lesson-paid' : 'cd-lesson-unpaid'}">${l.paid ? 'Paid' : 'Unpaid'}</p>
+          <p class="${l.paid ? 'cd-lesson-paid' : 'cd-lesson-unpaid'}" style="cursor:pointer;" onclick="toggleLessonPaid(${l.id}, ${l.paid})" title="Click to mark as ${l.paid ? 'unpaid' : 'paid'}">${l.paid ? 'Paid' : 'Unpaid'}</p>
         </div>
         ${l.date ? `<p class="next-value" style="color:var(--brass);">${escapeHtml(l.date)}</p>` : ''}
         <button class="icon-btn" aria-label="Remove lesson" onclick="deleteClientLesson(${l.id})"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -568,6 +553,17 @@ async function deleteClientLesson(lessonId) {
     await openClientDetail(currentClientDetailId);
   } catch (err) {
     alert(err.message || 'Could not remove lesson.');
+  }
+}
+
+async function toggleLessonPaid(lessonId, currentlyPaid) {
+  try {
+    await apiFetch(`/api/clients/${currentClientDetailId}/lessons/${lessonId}/paid`, {
+      method: 'PUT', body: JSON.stringify({ paid: !currentlyPaid }),
+    });
+    await openClientDetail(currentClientDetailId);
+  } catch (err) {
+    alert(err.message || 'Could not update payment status.');
   }
 }
 

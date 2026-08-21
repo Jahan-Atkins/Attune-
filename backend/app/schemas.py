@@ -17,6 +17,10 @@ class ClientLessonCreate(ClientLessonBase):
     pass
 
 
+class ClientLessonPaidUpdate(BaseModel):
+    paid: bool
+
+
 class ClientLessonOut(ClientLessonBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
