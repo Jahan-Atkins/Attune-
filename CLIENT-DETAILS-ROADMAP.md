@@ -84,3 +84,13 @@ see the scope decisions below, made explicitly before building.
       restart, so new routes 405'd until it was restarted again —
       not a code bug, just `uvicorn` without `--reload` not picking up
       edits made after it started.
+- [x] Deployed to production (Render + its Postgres). Hit the same
+      `create_all()` partial-schema issue as the Phase-2 Postgres
+      migration and the request-confirm deploy before it — see the new
+      gotcha in `CLAUDE.md`. Fixed by manually adding the missing
+      columns Render's restart-time `create_all()` couldn't (it only
+      creates missing *tables*, never adds columns to ones that already
+      exist), then `alembic stamp head`. Verified live: Client Details
+      fields present on a real client, seeded 3 demo Open Sessions, and
+      confirmed Filter (max lessons/week) and Sort (nearest) both work
+      against production data.

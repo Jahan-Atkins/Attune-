@@ -151,6 +151,21 @@ the dropdown).
   it — the restored permission doesn't apply to an already-running
   process. Restart the server before assuming a code change broke
   something.
+- **Deploying a new migration to Render is a two-step race, every time.**
+  `main.py`'s `models.Base.metadata.create_all(bind=engine)` runs on
+  every app startup as a safety net — and a `git push` triggers Render
+  to restart the app *before* you've had a chance to run
+  `alembic upgrade head` by hand. `create_all()` only creates tables
+  that don't exist yet; it never adds columns to a table that's already
+  there. So a migration that both adds a new table *and* adds columns to
+  an existing one lands in a half-applied state: `alembic upgrade head`
+  then fails with "relation already exists" on the new table, while the
+  existing tables are still missing their new columns. Fix: inspect the
+  live schema (`sqlalchemy.inspect(engine).get_columns(...)`), manually
+  `ALTER TABLE ... ADD COLUMN` whatever `create_all()` skipped, then
+  `alembic stamp head` (not `upgrade`) once the schema actually matches
+  `models.py`. This has happened on every Render deploy so far — expect
+  it again next time, don't be surprised by the error.
 
 ## Current status
 
@@ -169,5 +184,3 @@ each piece got built, and `ROADMAP.md` for the deploy history.
 **Not started:** `ROADMAP.md` Phase 4 (polish — CORS origin lock-down,
 loading states, favicon, mobile testing) and one manual verification
 step (a second real person signing up to confirm data isolation live).
-The Client Details/Filter/Sort work above is built and tested locally
-but not yet deployed to the live Render site — see that roadmap doc.
