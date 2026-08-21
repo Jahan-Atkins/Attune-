@@ -16,6 +16,11 @@ scheduled lesson, and get matched once an instructor confirms).
   connect" below for why that isn't instant)
 - **API docs:** https://attune-q29q.onrender.com/docs
 
+Note: this is Render's free tier, which spins the server down after
+~15 minutes of no traffic. The first request after that can take up to
+a minute to respond — it's not broken, just waking up. Give it a moment
+and reload if a link looks dead.
+
 (The URLs later in this README under "Run it" are `localhost` ones for
 running the project on your own machine — they only work while you have
 the server running locally, not as links to a hosted copy.)
