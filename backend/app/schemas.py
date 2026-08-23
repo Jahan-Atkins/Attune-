@@ -2,7 +2,7 @@
 Pydantic schemas — these describe the *shape of JSON* going in and out
 of the API, separate from models.py (which describes the database).
 """
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from datetime import datetime
 from typing import List, Optional
 
@@ -104,7 +104,7 @@ class SignupRequest(BaseModel):
     name: str
     email: EmailStr
     phone: str
-    password: str
+    password: str = Field(min_length=8)
 
 
 class Token(BaseModel):
@@ -118,7 +118,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str
-    new_password: str
+    new_password: str = Field(min_length=8)
 
 
 # ---- Profile ----
@@ -171,7 +171,7 @@ class CustomerSignupRequest(BaseModel):
     name: str
     email: EmailStr
     phone: str
-    password: str
+    password: str = Field(min_length=8)
 
 
 # ---- Public instructor view (what a matched customer sees) ----

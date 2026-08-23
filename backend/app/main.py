@@ -15,9 +15,10 @@ no CORS setup needed between the pieces. A larger app would likely split
 these into separate services; see README.md's deploy section for how
 you'd do that later without changing much backend code.
 """
+import os
 from pathlib import Path
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -36,12 +37,34 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Attune API")
 
+# FRONTEND_ORIGINS unset -> "*" (today's behavior, fine pre-launch since
+# auth is a bearer token in the Authorization header, not a cookie, so
+# wildcard CORS can't be combined with credentialed requests). Once
+# there's a real domain (see LAUNCH-ROADMAP.md), set
+# FRONTEND_ORIGINS="https://yourdomain.com" on Render — no code change
+# needed to lock it down.
+_frontend_origins = os.getenv("FRONTEND_ORIGINS")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_frontend_origins.split(",") if _frontend_origins else ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Baseline hardening headers with no framework or dependency behind
+    them — Starlette's middleware hook is enough. Skips
+    Content-Security-Policy: both frontends rely on inline onclick="..."
+    handlers throughout, so a CSP tight enough to matter would break
+    every button; loosening it to 'unsafe-inline' just to have a CSP
+    header isn't worth doing until that's refactored."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 app.include_router(auth.router)
 app.include_router(clients.router)

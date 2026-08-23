@@ -23,7 +23,9 @@ RESET_TOKEN_EXPIRE_MINUTES = 60
 
 
 @router.post("/signup", response_model=schemas.Token, status_code=201)
-def signup(payload: schemas.SignupRequest, db: Session = Depends(get_db)):
+def signup(payload: schemas.SignupRequest, request: Request, db: Session = Depends(get_db)):
+    check_rate_limit("signup-instructor", request, "signup")
+    record_failed_attempt("signup-instructor", request, "signup")
     existing = db.query(models.Instructor).filter(models.Instructor.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="An account with that email already exists")

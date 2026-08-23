@@ -6,10 +6,12 @@ any logged-in instructor can see and create them (think of it like a
 job board). Once an instructor requests one, it's tied to them via
 requested_by_id, and only shows up under "requested" for that person.
 
-Simplification worth knowing: any instructor can edit/delete any open
-listing here, since we don't track a separate "posted by" field. In a
-real version you'd add that and check ownership the same way
-clients.py checks instructor_id.
+Simplification worth knowing: any instructor can edit/delete any *open*
+listing here, since we don't track a separate "posted by" field for
+who originally posted it. Once a listing is "requested" though, it's
+no longer shared — update/delete require requested_by_id == instructor.id,
+same ownership check withdraw_session already used, so one instructor
+can't edit or delete a session another instructor has already claimed.
 """
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -108,6 +110,8 @@ def update_session(
     session_listing = db.query(models.SessionListing).filter(models.SessionListing.id == session_id).first()
     if not session_listing:
         raise HTTPException(status_code=404, detail="Session not found")
+    if session_listing.status == "requested" and session_listing.requested_by_id != instructor.id:
+        raise HTTPException(status_code=403, detail="Another instructor has already claimed this session.")
     data = payload.model_dump()
     city_name = data.pop("city", None)
     for field, value in data.items():
@@ -127,6 +131,8 @@ def delete_session(
     session_listing = db.query(models.SessionListing).filter(models.SessionListing.id == session_id).first()
     if not session_listing:
         raise HTTPException(status_code=404, detail="Session not found")
+    if session_listing.status == "requested" and session_listing.requested_by_id != instructor.id:
+        raise HTTPException(status_code=403, detail="Another instructor has already claimed this session.")
     db.delete(session_listing)
     db.commit()
     return None

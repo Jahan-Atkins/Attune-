@@ -851,3 +851,7 @@ document.addEventListener('DOMContentLoaded', () => {
     routeLoggedInCustomer();
   }
 });
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/customer/sw.js');
+}
