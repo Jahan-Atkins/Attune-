@@ -263,6 +263,11 @@ class Customer(Base):
     # Nullable for the same reason as Instructor.hashed_password above —
     # a Google-only account has no password.
     hashed_password = Column(String, nullable=True)
+    # Same "self-controlled, defaults on" shape as Instructor.email_notifications
+    # above — checked before every send_email() call that targets this
+    # customer (match confirmed, next session scheduled, recurring series
+    # created/paused/cancelled), never before one that targets an instructor.
+    email_notifications = Column(Boolean, default=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     # What the customer actually typed on the availability step, geocoded
@@ -281,6 +286,10 @@ class Customer(Base):
     bookings = relationship("Booking", back_populates="customer", cascade="all, delete-orphan")
     lesson_requests = relationship("LessonRequest", back_populates="customer", cascade="all, delete-orphan")
     reviews_given = relationship("Review", back_populates="customer", cascade="all, delete-orphan")
+    # cascade so deleting a customer's own account doesn't strand a
+    # RecurringSeries pointing at a now-nonexistent customer_id (which
+    # ensure_upcoming_occurrences would otherwise keep expanding forever).
+    recurring_series = relationship("RecurringSeries", back_populates="customer", cascade="all, delete-orphan")
 
     @property
     def city(self):
@@ -296,6 +305,13 @@ class Customer(Base):
         if self.city_name:
             return f"{self.city_name}, {self.state_name}" if self.state_name else self.city_name
         return geo.city_name_for_coords(self.latitude, self.longitude)
+
+    @property
+    def has_password(self):
+        """True unless this is a Google-only account — see hashed_password's
+        docstring above. Lets the customer Profile screen hide the Change
+        Password form for an account with nothing to change."""
+        return self.hashed_password is not None
 
 
 class Booking(Base):
@@ -522,7 +538,7 @@ class RecurringSeries(Base):
     status = Column(String, default="active")  # "active" | "paused" | "cancelled"
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    customer = relationship("Customer")
+    customer = relationship("Customer", back_populates="recurring_series")
     instructor = relationship("Instructor")
 
     @property

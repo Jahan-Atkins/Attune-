@@ -198,6 +198,38 @@ class CustomerSignupRequest(BaseModel):
     password: str = Field(min_length=8)
 
 
+# ---- Customer profile ----
+# Mirrors ProfileOut/ProfileUpdate above — email/city_name/state_name/
+# address_line are read-only here (city/state/address come from the
+# geocoded availability step, not a bare profile edit; email is also the
+# login identity, so it's deliberately not editable through this route).
+
+class CustomerProfileOut(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    email_notifications: bool = True
+    has_password: bool = True  # False for a Google-only account — see hashed_password
+    city: Optional[str] = None
+    city_name: Optional[str] = None
+    state_name: Optional[str] = None
+    address_line: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email_notifications: Optional[bool] = None
+
+
+class DeleteAccountRequest(BaseModel):
+    """Confirmation step before a hard delete — see customer_profile.py's
+    delete_profile. current_password is required unless the account is
+    Google-only (no hashed_password to check)."""
+    current_password: Optional[str] = None
+
+
 # ---- Public instructor view (what a matched customer sees) ----
 # email/phone are included here on purpose — this schema is only ever
 # populated once `instructor_id` is actually set on a Booking/LessonRequest,

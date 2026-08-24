@@ -15,6 +15,7 @@ from ..database import get_db
 from ..email import send_email
 from ..google_auth import verify_google_id_token
 from ..rate_limit import check_rate_limit, record_failed_attempt, reset_attempts
+from ..security import get_current_customer
 
 router = APIRouter(prefix="/api/customer/auth", tags=["customer-auth"])
 
@@ -121,3 +122,25 @@ def reset_password(payload: schemas.ResetPasswordRequest, db: Session = Depends(
     db.delete(reset_token)
     db.commit()
     return {"detail": "Password updated — you can now log in."}
+
+
+@router.post("/change-password")
+def change_password(
+    payload: schemas.ChangePasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    customer: models.Customer = Depends(get_current_customer),
+):
+    """Mirrors auth.py's change_password — see that docstring. Rate-limited
+    under its own scope ("change-password-customer") so it doesn't share a
+    lockout bucket with the instructor route."""
+    check_rate_limit("change-password-customer", request, str(customer.id))
+    if not customer.hashed_password:
+        raise HTTPException(status_code=400, detail="This account signed in with Google and has no password to change.")
+    if not security.verify_password(payload.current_password, customer.hashed_password):
+        record_failed_attempt("change-password-customer", request, str(customer.id))
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    reset_attempts("change-password-customer", request, str(customer.id))
+    customer.hashed_password = security.hash_password(payload.new_password)
+    db.commit()
+    return {"detail": "Password updated."}

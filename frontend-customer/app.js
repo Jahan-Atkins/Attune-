@@ -223,6 +223,7 @@ async function handleGoogleCredential(response) {
 function updateNav() {
   const loggedIn = !!getToken();
   document.getElementById('nav-login-btn').style.display = loggedIn ? 'none' : 'inline-block';
+  document.getElementById('nav-profile-btn').style.display = loggedIn ? 'inline-block' : 'none';
   document.getElementById('nav-logout-btn').style.display = loggedIn ? 'inline-block' : 'none';
 }
 
@@ -835,6 +836,87 @@ async function cancelSeries(id) {
     await loadRecurringSeries();
   } catch (err) {
     alert(err.message || 'Could not cancel this booking.');
+  }
+}
+
+/* =========================================================
+   ACCOUNT / PROFILE
+   ========================================================= */
+async function openProfileScreen() {
+  goToScreen('profile');
+  document.getElementById('profile-error').style.display = 'none';
+  document.getElementById('profile-success').style.display = 'none';
+  try {
+    const profile = await apiFetch('/api/customer/profile');
+    document.getElementById('profile-name').value = profile.name;
+    document.getElementById('profile-phone').value = profile.phone || '';
+    document.getElementById('profile-email').value = profile.email;
+    document.getElementById('profile-email-notifications').checked = profile.email_notifications;
+    document.getElementById('profile-password-card').style.display = profile.has_password ? 'block' : 'none';
+    document.getElementById('profile-google-only-note').style.display = profile.has_password ? 'none' : 'block';
+  } catch (err) {
+    document.getElementById('profile-error').textContent = err.message || 'Could not load your account.';
+    document.getElementById('profile-error').style.display = 'block';
+  }
+}
+
+async function submitProfileForm(evt) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('profile-error');
+  const successEl = document.getElementById('profile-success');
+  errorEl.style.display = 'none';
+  successEl.style.display = 'none';
+  const payload = {
+    name: document.getElementById('profile-name').value.trim(),
+    phone: document.getElementById('profile-phone').value.trim(),
+    email_notifications: document.getElementById('profile-email-notifications').checked,
+  };
+  try {
+    await apiFetch('/api/customer/profile', { method: 'PUT', body: JSON.stringify(payload) });
+    successEl.textContent = 'Saved.';
+    successEl.style.display = 'block';
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not save your changes.';
+    errorEl.style.display = 'block';
+  }
+}
+
+async function submitProfilePasswordForm(evt) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('profile-password-error');
+  const successEl = document.getElementById('profile-password-success');
+  errorEl.style.display = 'none';
+  successEl.style.display = 'none';
+  const payload = {
+    current_password: document.getElementById('profile-current-password').value,
+    new_password: document.getElementById('profile-new-password').value,
+  };
+  try {
+    await apiFetch('/api/customer/auth/change-password', { method: 'POST', body: JSON.stringify(payload) });
+    document.getElementById('profile-password-form').reset();
+    successEl.textContent = 'Password updated.';
+    successEl.style.display = 'block';
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not update your password.';
+    errorEl.style.display = 'block';
+  }
+}
+
+async function deleteAccount() {
+  const errorEl = document.getElementById('profile-delete-error');
+  errorEl.style.display = 'none';
+  if (!confirm('Delete your account? This permanently removes your booking history and cannot be undone.')) return;
+  let currentPassword = null;
+  if (document.getElementById('profile-password-card').style.display !== 'none') {
+    currentPassword = prompt('Enter your current password to confirm:');
+    if (!currentPassword) return;
+  }
+  try {
+    await apiFetch('/api/customer/profile', { method: 'DELETE', body: JSON.stringify({ current_password: currentPassword }) });
+    logout();
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not delete your account.';
+    errorEl.style.display = 'block';
   }
 }
 

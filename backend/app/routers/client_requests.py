@@ -221,11 +221,12 @@ def _notify_match(customer: models.Customer, instructor: models.Instructor) -> N
     side gets notified of the match and the other's contact info by
     email, not just by whatever they happen to see next time they open
     the app."""
-    send_email(
-        to=customer.email,
-        subject=f"You're matched with {instructor.name}",
-        body=f"{instructor.name} confirmed your request. Contact them directly: {instructor.email}, {instructor.phone}.",
-    )
+    if customer.email_notifications:
+        send_email(
+            to=customer.email,
+            subject=f"You're matched with {instructor.name}",
+            body=f"{instructor.name} confirmed your request. Contact them directly: {instructor.email}, {instructor.phone}.",
+        )
     if instructor.email_notifications:
         send_email(
             to=instructor.email,
