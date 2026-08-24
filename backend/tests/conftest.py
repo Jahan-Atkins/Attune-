@@ -44,7 +44,7 @@ def fake_geocoding(monkeypatch):
     city/state combo that isn't a known demo city (e.g. an
     invalid-address test) correctly resolves to None, the same way the
     old CITY_BY_NAME.get() did for an unknown city name."""
-    def fake_geocode(address, city, state):
+    def fake_geocode(city, state):
         return geo.CITY_BY_NAME.get(f"{city}, {state}")
     monkeypatch.setattr(geo, "geocode_address", fake_geocode)
     yield

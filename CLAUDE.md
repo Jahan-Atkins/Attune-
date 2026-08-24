@@ -279,8 +279,8 @@ Check the relevant one before assuming a feature doesn't exist yet.
   needs to know "which table does this row's id belong to," use `source`,
   never `request_type`.
 - **The customer flow uses real geocoding; the instructor flow still
-  doesn't.** `geo.geocode_address()` calls OpenStreetMap's free Nominatim
-  API to turn whatever address/city/state a customer types on the
+  doesn't.** `geo.geocode_address(city, state)` calls OpenStreetMap's free
+  Nominatim API to turn whatever city/state a customer types on the
   availability step into real coordinates — the only external network
   call anywhere in this app. The instructor profile form and
   instructor-created open session listings are unchanged: still a
@@ -288,6 +288,20 @@ Check the relevant one before assuming a feature doesn't exist yet.
   don't convert those too without being asked, and don't assume
   `geo.CITY_BY_NAME`/`DEMO_CITIES` are dead code just because the
   customer side stopped using them.
+  - **Geocoding is deliberately city/state-level, not full-street-address-
+    level, even though the customer also types a street address.** A real
+    test query for `geo.geocode_address` with the *complete* street
+    address included (a famous, unambiguous Manhattan address) silently
+    returned a same-named street in a small town 240km away — Nominatim's
+    free index has patchy house-number-level coverage. City-level
+    geocoding doesn't have that failure mode, and this app's matching
+    logic only ever needs city-scale precision anyway (haversine distance
+    for "nearest instructor," not real delivery routing). The street
+    address is still required, still stored (`Customer.address_line`),
+    and still shown to a confirming instructor — it's just not part of
+    what determines location. Don't feed it into the geocoding query
+    without re-solving the accuracy problem above; see geo.py's
+    `geocode_address` docstring for the full story.
   - `Customer` stores what was typed in `address_line`/`city_name`/
     `state_name` (real columns) plus the geocoded `latitude`/`longitude`.
     `Customer.city` stays a *computed property*, not a column — it
@@ -304,11 +318,11 @@ Check the relevant one before assuming a feature doesn't exist yet.
     and the suite never makes a real network call (slow, flaky, and
     Nominatim's usage policy caps unauthenticated use at ~1 req/second —
     a real call per test would risk tripping that). If you add a test
-    that needs an address to fail geocoding, use a city/state pair that
-    isn't one of the six `DEMO_CITIES` names.
-  - A failed/unresolvable geocode is a 400 ("Couldn't find that address.
+    that needs geocoding to fail, use a city/state pair that isn't one of
+    the six `DEMO_CITIES` names.
+  - A failed/unresolvable geocode is a 400 ("Couldn't find that city.
     Please check it and try again."), not a crash or a silent fallback —
-    keep it that way; don't guess coordinates for an address Nominatim
+    keep it that way; don't guess coordinates for a city Nominatim
     couldn't find.
 - **A `LessonRequest` also carries an optional `lessons_per_week`** — a
   stated preference, not an enforced constraint, same unvalidated-integer
@@ -385,11 +399,11 @@ the dropdown).
 - **Nominatim geocoding is a real network call with no retry and an
   8-second timeout** (`geo.geocode_address()`) — if it's slow, rate-limited,
   or unreachable, `create_lesson_request` returns the same 400 as a
-  genuinely unresolvable address ("Couldn't find that address...").
-  There's no way from that response alone to tell "bad address" apart
-  from "Nominatim had a bad moment" — if a customer reports this
-  happening on an address that looks obviously valid, that's the first
-  thing to suspect, not a bug in the parsing.
+  genuinely unresolvable city ("Couldn't find that city..."). There's no
+  way from that response alone to tell "bad city name" apart from
+  "Nominatim had a bad moment" — if a customer reports this happening on
+  a city that obviously exists, that's the first thing to suspect, not a
+  bug in the parsing.
 
 - **`backend/.env` may point at production Postgres, not local SQLite.**
   It gets pointed there deliberately during a deploy (see the Render

@@ -61,15 +61,26 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 GEOCODING_USER_AGENT = "Attune-App/1.0 (https://attune-q29q.onrender.com)"
 
 
-def geocode_address(address: str, city: str, state: str):
-    """Real geocoding for the customer flow — combines the three fields
-    into one free-form query string and asks Nominatim for the best
-    match. Returns {"lat": float, "lng": float}, or None if the address
-    couldn't be resolved (not found, or Nominatim unreachable/erroring) —
-    callers turn None into a 400 asking the customer to check what they
-    typed, same "fail fast with a clear message" pattern as the old fixed
-    dropdown's unknown-city check."""
-    query = ", ".join(part.strip() for part in (address, city, state) if part and part.strip())
+def geocode_address(city: str, state: str):
+    """Real geocoding for the customer flow — resolves city+state to real
+    coordinates via Nominatim. Deliberately city-level, not full-street-
+    address-level: tried querying the complete street address first, and
+    found Nominatim's free public index has patchy house-number-level
+    coverage — a real test query for a famous, unambiguous Manhattan
+    address returned a same-named street in a small town 240km away,
+    silently, with no error. City-level geocoding doesn't have that
+    failure mode (cities are reliably well-covered), and this app's
+    matching logic only ever needs city-scale precision (haversine
+    distance for "nearest instructor," not real delivery routing) — so
+    trading street-level precision for reliability is the right call. The
+    customer's street address is still collected and stored for display
+    (see Customer.address_line) — it's just not part of what determines
+    location; don't feed it back into this query without re-solving the
+    accuracy problem above. Returns {"lat": float, "lng": float}, or None
+    if the city/state couldn't be resolved — callers turn None into a 400
+    asking the customer to check what they typed, same "fail fast with a
+    clear message" pattern as the old fixed dropdown's unknown-city check."""
+    query = ", ".join(part.strip() for part in (city, state) if part and part.strip())
     if not query:
         return None
     try:

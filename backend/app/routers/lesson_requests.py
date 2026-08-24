@@ -4,11 +4,12 @@ customer request, package or not. A customer submits a package
 (single/pack4/pack8/pack12/pack16, same session counts as bookings.py's
 legacy PACKAGE_PRICING) plus a *set* of candidate availability windows
 and a duration; create_lesson_request() validates the card format (no
-charge yet), geocodes the customer's typed address/city/state into real
+charge yet), geocodes the customer's typed city/state into real
 coordinates (geo.geocode_address — a live call to OpenStreetMap's
-Nominatim, the only external network dependency in this app), and sets
-"pending" as long as at least one active instructor could fulfill at
-least one submitted window.
+Nominatim, the only external network dependency in this app; the street
+address is stored for display only, not geocoded — see geo.py's
+docstring for why), and sets "pending" as long as at least one active
+instructor could fulfill at least one submitted window.
 Whether any *particular* instructor actually sees it also depends on
 their own travel-distance preference and which of the submitted windows
 (if any) overlaps their own availability blocks — both evaluated
@@ -154,9 +155,9 @@ def create_lesson_request(
     if payload.duration_minutes not in DURATION_PRICING:
         raise HTTPException(status_code=400, detail="Lesson length must be 30-90 minutes, in 15-minute steps.")
     _validate_windows(payload.availability_windows)
-    coords = geo.geocode_address(payload.address, payload.city, payload.state)
+    coords = geo.geocode_address(payload.city, payload.state)
     if not coords:
-        raise HTTPException(status_code=400, detail="Couldn't find that address. Please check it and try again.")
+        raise HTTPException(status_code=400, detail="Couldn't find that city. Please check it and try again.")
     if payload.preferred_instructor_id is not None:
         _validate_preferred_instructor(
             db, payload.preferred_instructor_id, payload.specialty,
