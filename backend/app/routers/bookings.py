@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..email import send_email
 from ..security import get_current_customer
 
 router = APIRouter(prefix="/api/customer/bookings", tags=["bookings"])
@@ -104,4 +105,42 @@ def get_my_latest_booking(
     )
     if not booking:
         raise HTTPException(status_code=404, detail="No booking yet")
+    return booking
+
+
+@router.put("/{booking_id}/cancel", response_model=schemas.BookingOut)
+def cancel_booking(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    customer: models.Customer = Depends(get_current_customer),
+):
+    """Customer-side self-cancel — same status-flag convention as
+    admin.py's force_cancel_booking, just "cancelled_by_customer" instead
+    of "cancelled_by_admin" so the two leave a distinguishable trail of
+    who actually cancelled."""
+    booking = (
+        db.query(models.Booking)
+        .filter(models.Booking.id == booking_id, models.Booking.customer_id == customer.id)
+        .first()
+    )
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+    if booking.status in ("cancelled_by_admin", "cancelled_by_customer"):
+        raise HTTPException(status_code=400, detail="Already cancelled.")
+    if booking.status == "unmatched":
+        raise HTTPException(status_code=400, detail="This request was never matched — there's nothing to cancel.")
+
+    was_matched = booking.status == "matched"
+    instructor = booking.instructor
+    booking.status = "cancelled_by_customer"
+    db.commit()
+    db.refresh(booking)
+    if was_matched and instructor and instructor.email_notifications:
+        # A matched booking already blocked real calendar time for the
+        # instructor — they need to know it's freed up again.
+        send_email(
+            to=instructor.email,
+            subject=f"Booking cancelled by {customer.name}",
+            body=f"{customer.name} cancelled their booking with you.",
+        )
     return booking

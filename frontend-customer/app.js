@@ -48,6 +48,7 @@ let selectedDuration = null;
 let selectedLessonsPerWeek = null; // a stated preference, not enforced — see models.LessonRequest
 let durationCatalog = {};
 let lastRequestType = null; // 'package' | 'schedule' — which /me endpoint checkLatestStatus() re-polls
+let lastRequestId = null; // id of whatever renderMatch() last drew — set in renderMatch itself, read by cancelCurrentRequest
 let preferredInstructorId = null; // set by "Book Again with [Name]", sent as-is in the final submit payload
 let preferredInstructorName = null; // display-only echo of the above, never sent to the backend
 let blockedInstructorIds = new Set(); // populated by loadHistory(), read by historyCardHTML
@@ -541,11 +542,18 @@ function historyCardHTML(item) {
   const canMakeRecurring = item._type === 'lesson-request' && !isRecurringOccurrence && item.sessions_total === 1;
   const isPackageRoot = item._type === 'lesson-request' && item.session_number === 1 && item.sessions_total > 1;
   const hasSessionsToSchedule = isPackageRoot && item.sessions_scheduled != null && item.sessions_scheduled < item.sessions_total;
+  // A package root only self-serve-cancels before anything beyond the
+  // root itself has been scheduled — matches the backend's 400 case
+  // (see routers/lesson_requests.py's cancel_lesson_request).
+  const packageHasScheduledSessions = isPackageRoot && item.sessions_scheduled != null && item.sessions_scheduled > 1;
+  const canCancel = (item.status === 'pending' || item.status === 'matched') && !isRecurringOccurrence && !packageHasScheduledSessions;
+  const showMatchedActions = item.status === 'matched' && item.instructor;
+  const cancelBtn = canCancel ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="cancelHistoryItem('${item._type}', ${item.id})">Cancel Request</button>` : '';
   return `
     <div class="card wizard-card" style="margin:0 0 14px; padding:20px 22px; text-align:left;">
       <p class="card-sub" style="margin:0; text-align:left;">${escapeHtml(dateStr)} · ${escapeHtml(statusLabel)}${isRecurringOccurrence ? ' · Recurring' : ''}${isPackageRoot ? ` · ${item.sessions_scheduled} of ${item.sessions_total} scheduled` : ''}</p>
       <p class="match-name" style="font-size:17px; margin-top:4px;">${escapeHtml(specialtyLabel)}${instructorName ? ' with ' + escapeHtml(instructorName) : ''}</p>
-      ${item.status === 'matched' && item.instructor ? `
+      ${showMatchedActions ? `
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
           <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleReviewForm('${key}')">${reviewsByKey[key] ? 'Edit Review' : 'Leave a Review'}</button>
           ${!isRecurringOccurrence ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="${rebookCall}">Book Again with ${escapeHtml(instructorName)}</button>` : ''}
@@ -553,10 +561,12 @@ function historyCardHTML(item) {
           ${hasSessionsToSchedule ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleScheduleNextForm('${key}', ${item.id})">Schedule Next Session (${item.sessions_scheduled} of ${item.sessions_total})</button>` : ''}
           <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleReportForm('${key}', ${item.instructor.id})">Report</button>
           <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleBlockInstructor(${item.instructor.id}, '${encodedName}')">${isBlocked ? 'Unblock' : 'Block'}</button>
+          ${cancelBtn}
         </div>
         <div id="review-form-${key}" style="display:none; margin-top:14px;"></div>
         <div id="report-form-${key}" style="display:none; margin-top:14px;"></div>
-        <div id="schedule-next-form-${key}" style="display:none; margin-top:14px;"></div>` : ''}
+        <div id="schedule-next-form-${key}" style="display:none; margin-top:14px;"></div>` : (cancelBtn ? `
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">${cancelBtn}</div>` : '')}
     </div>`;
 }
 
@@ -618,6 +628,17 @@ async function toggleBlockInstructor(instructorId, encodedName) {
     await loadHistory();
   } catch (err) {
     alert(err.message || `Could not ${verb} this instructor.`);
+  }
+}
+
+async function cancelHistoryItem(type, id) {
+  if (!confirm('Cancel this request?')) return;
+  const path = type === 'lesson-request' ? `/api/customer/lesson-requests/${id}/cancel` : `/api/customer/bookings/${id}/cancel`;
+  try {
+    await apiFetch(path, { method: 'PUT' });
+    await loadHistory();
+  } catch (err) {
+    alert(err.message || 'Could not cancel this request.');
   }
 }
 
@@ -881,6 +902,7 @@ async function cancelSeries(id) {
 function renderMatch(result, justBooked) {
   const isLessonRequest = 'requested_day' in result;
   const specialtyLabel = result.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  lastRequestId = result.id;
 
   const ctaBtn = document.getElementById('match-cta-btn');
   ctaBtn.textContent = isLessonRequest ? 'Schedule Another Lesson' : 'Book Another Package';
@@ -890,10 +912,14 @@ function renderMatch(result, justBooked) {
   const unmatchedEl = document.getElementById('match-unmatched');
   const contactEl = document.getElementById('match-contact');
   const refreshBtn = document.getElementById('match-refresh-btn');
+  const cancelBtn = document.getElementById('match-cancel-btn');
   pendingEl.style.display = 'none';
   unmatchedEl.style.display = 'none';
   contactEl.style.display = 'none';
   refreshBtn.style.display = result.status === 'pending' ? 'block' : 'none';
+  // Only offered here while still pending — a matched/unmatched request
+  // is already reachable (and, for matched, cancellable) from History.
+  cancelBtn.style.display = result.status === 'pending' ? 'block' : 'none';
 
   if (result.status === 'pending') {
     document.getElementById('match-eyebrow').textContent = 'Request sent';
@@ -919,17 +945,27 @@ function renderMatch(result, justBooked) {
 
   document.getElementById('match-eyebrow').textContent = justBooked ? "You're matched!" : 'Your match';
 
-  unmatchedEl.textContent = isLessonRequest
-    ? "No instructor could fulfill any of those windows. Try different days, times, or a shorter lesson length."
-    : "No active instructor currently offers this specialty. Please check back later.";
+  // A self- or admin-cancelled request only ever reaches this branch
+  // with no instructor attached (the Cancel button only shows while
+  // still "pending" — see cancelCurrentRequest) — cancelled_by_admin is
+  // included here too since /me has no status filter and could surface
+  // one just as easily. Without this, it'd fall through to the generic
+  // "no instructor could fulfill" copy below, which is simply wrong for
+  // a request the customer cancelled themselves.
+  const isCancelled = result.status === 'cancelled_by_customer' || result.status === 'cancelled_by_admin';
+  unmatchedEl.textContent = isCancelled
+    ? 'This request was cancelled.'
+    : isLessonRequest
+      ? "No instructor could fulfill any of those windows. Try different days, times, or a shorter lesson length."
+      : "No active instructor currently offers this specialty. Please check back later.";
 
   if (!result.instructor) {
     // Truly unmatched: requested_day/matched_start_time are never set on
     // a row that never got confirmed, so there's no real day/time to
-    // summarize here — unmatchedEl below already carries the message.
+    // summarize here — unmatchedEl above already carries the message.
     document.getElementById('match-summary').textContent = `${specialtyLabel} · $${result.amount_paid} due once confirmed`;
     document.getElementById('match-avatar').textContent = '···';
-    document.getElementById('match-name').textContent = 'Not matched';
+    document.getElementById('match-name').textContent = isCancelled ? 'Cancelled' : 'Not matched';
     document.getElementById('match-specialty-badge').textContent = specialtyLabel;
     document.getElementById('match-bio').textContent = '';
     document.getElementById('match-certs').textContent = '';
@@ -964,6 +1000,20 @@ async function checkLatestStatus() {
     renderMatch(result, false);
   } catch (err) {
     console.error('Failed to refresh status:', err);
+  }
+}
+
+async function cancelCurrentRequest() {
+  if (!lastRequestId) return;
+  if (!confirm('Cancel this request?')) return;
+  const path = lastRequestType === 'schedule'
+    ? `/api/customer/lesson-requests/${lastRequestId}/cancel`
+    : `/api/customer/bookings/${lastRequestId}/cancel`;
+  try {
+    const result = await apiFetch(path, { method: 'PUT' });
+    renderMatch(result, false);
+  } catch (err) {
+    alert(err.message || 'Could not cancel this request.');
   }
 }
 
