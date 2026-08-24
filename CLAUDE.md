@@ -280,16 +280,19 @@ Check the relevant one before assuming a feature doesn't exist yet.
   specifically to catch a regression here. If you add another place that
   needs to know "which table does this row's id belong to," use `source`,
   never `request_type`.
-- **The customer flow uses real geocoding; the instructor flow still
-  doesn't.** `geo.geocode_address(city, state)` calls OpenStreetMap's free
-  Nominatim API to turn whatever city/state a customer types on the
-  availability step into real coordinates — the only external network
-  call anywhere in this app. The instructor profile form and
-  instructor-created open session listings are unchanged: still a
-  dropdown over the fixed `DEMO_CITIES` list, no geocoding, by design —
-  don't convert those too without being asked, and don't assume
-  `geo.CITY_BY_NAME`/`DEMO_CITIES` are dead code just because the
-  customer side stopped using them.
+- **Both the customer flow and the instructor's own profile use real
+  geocoding now; only instructor-created open session listings still
+  use the fixed dropdown.** `geo.geocode_address(city, state)` calls
+  OpenStreetMap's free Nominatim API to turn whatever city/state someone
+  types into real coordinates — the only external network dependency
+  anywhere in this app. `routers/lesson_requests.py`'s
+  `create_lesson_request` (customer availability step) and
+  `routers/profile.py`'s `update_profile` (instructor's own city) both
+  call it. `routers/sessions.py`'s open-session-listing city field is the
+  one deliberate holdout: still a dropdown over the fixed `DEMO_CITIES`
+  list, no geocoding — don't convert that too without being asked, and
+  don't assume `geo.CITY_BY_NAME`/`DEMO_CITIES` are dead code just
+  because the other two flows stopped using them for their own location.
   - **Geocoding is deliberately city/state-level, not full-street-address-
     level, even though the customer also types a street address.** A real
     test query for `geo.geocode_address` with the *complete* street
@@ -298,21 +301,41 @@ Check the relevant one before assuming a feature doesn't exist yet.
     free index has patchy house-number-level coverage. City-level
     geocoding doesn't have that failure mode, and this app's matching
     logic only ever needs city-scale precision anyway (haversine distance
-    for "nearest instructor," not real delivery routing). The street
-    address is still required, still stored (`Customer.address_line`),
-    and still shown to a confirming instructor — it's just not part of
-    what determines location. Don't feed it into the geocoding query
-    without re-solving the accuracy problem above; see geo.py's
-    `geocode_address` docstring for the full story.
+    for "nearest instructor," not real delivery routing). The customer's
+    street address is still required, still stored
+    (`Customer.address_line`), and still shown to a confirming instructor
+    — it's just not part of what determines location. Don't feed it into
+    the geocoding query without re-solving the accuracy problem above;
+    see geo.py's `geocode_address` docstring for the full story.
+  - **`geocode_address` caches successful lookups and throttles outbound
+    calls to Nominatim's ~1-request/second usage-policy cap** —
+    `_geocode_cache` (a plain module-level dict, unbounded but small in
+    practice — same "single process, no Redis" reasoning as
+    `rate_limit.py`) and `_throttle()`/`_last_call_at` (a global,
+    `Lock`-guarded timestamp gate that sleeps rather than rejects, since
+    this is a small synchronous part of request creation, not a hot
+    path). Only *successful* lookups are cached — a transient network
+    hiccup or Nominatim outage must never permanently blacklist a real
+    city for the rest of the process's life. Both are exercised directly
+    in `tests/test_geo.py`, which deliberately undoes `fake_geocoding`'s
+    patch (`monkeypatch.undo()` — safe because both fixtures share the
+    same function-scoped `monkeypatch` instance) to test the *real*
+    implementation instead of the test double.
   - `Customer` stores what was typed in `address_line`/`city_name`/
-    `state_name` (real columns) plus the geocoded `latitude`/`longitude`.
-    `Customer.city` stays a *computed property*, not a column — it
-    combines `city_name`+`state_name` for display, but falls back to the
-    old `geo.city_name_for_coords()` reverse lookup for a customer who
-    only ever went through the legacy pre-cutover `Booking` flow (whose
-    lat/lng came from a `DEMO_CITIES` pick directly, with no
-    `city_name`/`state_name` ever set). Don't collapse that fallback away
-    — `test_pending_booking_visible_to_matching_instructor` depends on it.
+    `state_name` (real columns) plus the geocoded `latitude`/`longitude`;
+    `Instructor` mirrors this with `city_name`/`state_name` (its
+    `address` column predates this and stays purely decorative — never
+    geocoded). Both models' `city` stays a *computed property*, not a
+    column — it combines `city_name`+`state_name` for display, but falls
+    back to the old `geo.city_name_for_coords()` reverse lookup for a
+    row that predates this change and has no `city_name`/`state_name` set
+    (a customer from the legacy pre-cutover `Booking` flow, or any
+    instructor seeded/created before their profile went through the new
+    geocoded update path — `seed.py`'s demo instructors are exactly this
+    case, and rely on the fallback to still show a city). Don't collapse
+    that fallback away on either model —
+    `test_pending_booking_visible_to_matching_instructor` depends on it
+    for `Customer`.
   - `tests/conftest.py`'s `fake_geocoding` fixture (autouse) monkeypatches
     `geo.geocode_address` for the entire suite, resolving `"city, state"`
     against the same `CITY_BY_NAME` coordinates the old dropdown used —
@@ -321,11 +344,16 @@ Check the relevant one before assuming a feature doesn't exist yet.
     Nominatim's usage policy caps unauthenticated use at ~1 req/second —
     a real call per test would risk tripping that). If you add a test
     that needs geocoding to fail, use a city/state pair that isn't one of
-    the six `DEMO_CITIES` names.
+    the six `DEMO_CITIES` names. `conftest.py`'s `set_instructor_city`
+    helper takes a `"City, ST"` string and splits it into
+    `city_name`/`state_name` internally — its call sites didn't need to
+    change when the profile endpoint's payload shape did.
   - A failed/unresolvable geocode is a 400 ("Couldn't find that city.
     Please check it and try again."), not a crash or a silent fallback —
     keep it that way; don't guess coordinates for a city Nominatim
-    couldn't find.
+    couldn't find. On the instructor profile, `city_name`/`state_name`
+    must be sent together or not at all (`routers/profile.py` 400s on a
+    half-filled pair) — there's no way to geocode just one.
 - **A `LessonRequest` also carries an optional `lessons_per_week`** — a
   stated preference, not an enforced constraint, same unvalidated-integer
   role `Client.lessons_per_week`/`SessionListing.lessons_per_week` already
@@ -374,7 +402,7 @@ alembic upgrade head
 python seed.py           # see logins below
 python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 234 tests in backend/tests/ — run after any route change
+pytest                    # 240 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -400,12 +428,15 @@ the dropdown).
 
 - **Nominatim geocoding is a real network call with no retry and an
   8-second timeout** (`geo.geocode_address()`) — if it's slow, rate-limited,
-  or unreachable, `create_lesson_request` returns the same 400 as a
-  genuinely unresolvable city ("Couldn't find that city..."). There's no
-  way from that response alone to tell "bad city name" apart from
-  "Nominatim had a bad moment" — if a customer reports this happening on
-  a city that obviously exists, that's the first thing to suspect, not a
-  bug in the parsing.
+  or unreachable, the caller (`create_lesson_request` for a customer,
+  `update_profile` for an instructor) returns the same 400 as a genuinely
+  unresolvable city ("Couldn't find that city..."). There's no way from
+  that response alone to tell "bad city name" apart from "Nominatim had a
+  bad moment" — if someone reports this happening on a city that
+  obviously exists, that's the first thing to suspect, not a bug in the
+  parsing. A repeat lookup for the *same* city/state is cached
+  (`_geocode_cache`) and won't re-hit the network or the timeout at all —
+  only a genuinely new query can fail this way.
 
 - **`backend/.env` may point at production Postgres, not local SQLite.**
   It gets pointed there deliberately during a deploy (see the Render
@@ -480,9 +511,10 @@ its `Booking`-create path are retired, see the non-negotiables above),
 multi-session packages scheduled one session at a time after the first
 match (including a "Schedule Next Session" mini-picker with the same
 multi-select behavior as the main flow), instructor weekly availability
-+ a travel-distance preference, real address geocoding for the customer
-flow (OpenStreetMap Nominatim) alongside the still-fake demo-city
-dropdown the instructor flow uses, five package tiers (single/pack4/
++ a travel-distance preference, real address geocoding (OpenStreetMap
+Nominatim, cached and rate-throttled) for both the customer flow and the
+instructor's own profile city, alongside the still-fake demo-city
+dropdown open session listings use, five package tiers (single/pack4/
 pack8/pack12/pack16, a growing per-session discount from 0% up to ~12%
 at pack16) with duration- and package-scaled pricing, a Client
 Requests map (Leaflet via CDN), Postgres + deployment (Render, live), a
@@ -497,7 +529,7 @@ client-deletion approval workflow (instructor requests, admin
 approves/denies), and three launch-readiness items: rate limiting on
 login/forgot-password, self-serve password reset for instructors and
 customers, and a reporting/blocking mechanism between matched
-instructors and customers. 234 passing tests cover all of it. See
+instructors and customers. 240 passing tests cover all of it. See
 `SCHEDULING-ROADMAP.md`,
 `REQUEST-CONFIRM-ROADMAP.md`, `CLIENT-DETAILS-ROADMAP.md`, and
 `PLATFORM-EXPANSION-ROADMAP.md` for how each piece got built, and

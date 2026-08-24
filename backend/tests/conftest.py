@@ -121,7 +121,11 @@ def signup_instructor_with_specialty(client, email, specialty, name="Test Instru
 
 
 def set_instructor_city(client, headers, city):
-    res = client.put("/api/profile", json={"city": city}, headers=headers)
+    """`city` is a "City, ST" string (e.g. "Chicago, IL") — split into the
+    city_name/state_name ProfileUpdate now expects; fake_geocoding below
+    resolves the pair back to the same DEMO_CITIES coordinates either way."""
+    city_name, state_name = city.split(", ")
+    res = client.put("/api/profile", json={"city_name": city_name, "state_name": state_name}, headers=headers)
     assert res.status_code == 200, res.text
 
 

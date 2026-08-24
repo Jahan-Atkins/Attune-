@@ -1127,7 +1127,6 @@ async function loadCities() {
 async function openProfileForm() {
   const p = profileCache || {};
   const specialties = (p.specialty || '').split(',').map(s => s.trim());
-  const cities = await loadCities();
   const body = `
     <form id="profile-form" onsubmit="submitProfileForm(event)">
       <label class="field-label">Name</label>
@@ -1138,11 +1137,15 @@ async function openProfileForm() {
       <textarea class="field-textarea" id="pf-bio">${escapeHtml(p.bio || '')}</textarea>
       <label class="field-label">Address</label>
       <input class="field-input" id="pf-address" value="${escapeAttr(p.address || '')}">
-      <label class="field-label">City (used for scheduled-lesson matching)</label>
-      <select class="field-select" id="pf-city">
-        <option value="">Not set</option>
-        ${cities.map(c => `<option value="${escapeAttr(c)}" ${p.city === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-      </select>
+      <label class="field-label">City / State <span style="font-weight:400; text-transform:none; letter-spacing:0;">(used for scheduled-lesson matching)</span></label>
+      <div class="field-row">
+        <div>
+          <input class="field-input" id="pf-city" placeholder="City" value="${escapeAttr(p.city_name || '')}">
+        </div>
+        <div>
+          <input class="field-input" id="pf-state" placeholder="State" value="${escapeAttr(p.state_name || '')}">
+        </div>
+      </div>
       <label class="field-label">Certifications</label>
       <input class="field-input" id="pf-certs" placeholder="Comma-separated, e.g. RYT-500, Sound Healing" value="${escapeAttr(p.certifications || '')}">
       <label class="field-label">Specialty (used to match new customers to you)</label>
@@ -1178,6 +1181,13 @@ async function submitProfileForm(evt) {
     errorEl.style.display = 'block';
     return;
   }
+  const cityVal = document.getElementById('pf-city').value.trim();
+  const stateVal = document.getElementById('pf-state').value.trim();
+  if ((cityVal && !stateVal) || (!cityVal && stateVal)) {
+    errorEl.textContent = 'Enter both city and state, or leave both blank.';
+    errorEl.style.display = 'block';
+    return;
+  }
   const payload = {
     name,
     phone: document.getElementById('pf-phone').value.trim(),
@@ -1186,8 +1196,10 @@ async function submitProfileForm(evt) {
     certifications: document.getElementById('pf-certs').value.trim(),
     specialty: specialties.join(','),
   };
-  const cityVal = document.getElementById('pf-city').value;
-  if (cityVal) payload.city = cityVal; // omit entirely when "Not set" — an empty string isn't a valid city
+  if (cityVal && stateVal) {
+    payload.city_name = cityVal;
+    payload.state_name = stateVal;
+  }
   try {
     await apiFetch('/api/profile', { method: 'PUT', body: JSON.stringify(payload) });
     closeModal();

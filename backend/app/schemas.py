@@ -132,7 +132,9 @@ class ProfileOut(BaseModel):
     certifications: str
     specialty: str
     active: bool
-    city: Optional[str] = None
+    city: Optional[str] = None  # combined "City, ST" display string — see models.Instructor.city
+    city_name: Optional[str] = None  # raw, for pre-filling the profile edit form's separate city/state inputs
+    state_name: Optional[str] = None
     max_travel_distance_km: Optional[float] = None
     average_rating: Optional[float] = None
     review_count: int = 0
@@ -147,7 +149,8 @@ class ProfileUpdate(BaseModel):
     certifications: Optional[str] = None
     specialty: Optional[str] = None
     active: Optional[bool] = None
-    city: Optional[str] = None  # one of geo.DEMO_CITIES' names; resolved to lat/lng server-side
+    city_name: Optional[str] = None  # geocoded together via geo.geocode_address() — send both or neither
+    state_name: Optional[str] = None
     max_travel_distance_km: Optional[float] = None  # null = no limit
 
 

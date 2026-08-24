@@ -22,3 +22,22 @@ def test_toggle_active(client, auth_headers):
     res = client.put("/api/profile", json={"active": False}, headers=auth_headers)
     assert res.status_code == 200
     assert res.json()["active"] is False
+
+
+def test_update_profile_geocodes_city(client, auth_headers):
+    res = client.put("/api/profile", json={"city_name": "Chicago", "state_name": "IL"}, headers=auth_headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["city"] == "Chicago, IL"
+    assert body["city_name"] == "Chicago"
+    assert body["state_name"] == "IL"
+
+
+def test_update_profile_rejects_city_without_state(client, auth_headers):
+    res = client.put("/api/profile", json={"city_name": "Chicago"}, headers=auth_headers)
+    assert res.status_code == 400
+
+
+def test_update_profile_rejects_unresolvable_city(client, auth_headers):
+    res = client.put("/api/profile", json={"city_name": "Nowhere", "state_name": "ZZ"}, headers=auth_headers)
+    assert res.status_code == 400

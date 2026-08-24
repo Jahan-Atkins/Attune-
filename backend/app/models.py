@@ -37,6 +37,12 @@ class Instructor(Base):
     active = Column(Boolean, default=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+    # What the instructor actually typed on their profile form, geocoded
+    # into the lat/lng above via geo.geocode_address() — same "raw text
+    # for display, city stays a computed property" split as Customer's
+    # city_name/state_name; see that model for the full reasoning.
+    city_name = Column(String, nullable=True)
+    state_name = Column(String, nullable=True)
     max_travel_distance_km = Column(Float, nullable=True)  # null = no limit
 
     # Platform-controlled, unlike `active` (which the instructor toggles
@@ -58,9 +64,16 @@ class Instructor(Base):
 
     @property
     def city(self):
-        """Display name for latitude/longitude, e.g. for the profile form's
-        dropdown to show the currently-selected city. See geo.py — coords
-        always come from the fixed demo city list, never free-text."""
+        """Display string for wherever this instructor is — e.g. the
+        admin's instructor list. Prefers city_name/state_name (what they
+        actually typed via geo.geocode_address()); falls back to the old
+        DEMO_CITIES reverse lookup for an instructor whose location was
+        set before this app used real geocoding here and who hasn't
+        touched their profile city since. Same fallback shape as
+        Customer.city — see that property's docstring for the full
+        reasoning."""
+        if self.city_name:
+            return f"{self.city_name}, {self.state_name}" if self.state_name else self.city_name
         return geo.city_name_for_coords(self.latitude, self.longitude)
 
     @property
