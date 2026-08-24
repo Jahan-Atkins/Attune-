@@ -19,6 +19,16 @@ run.
 import os
 
 import httpx
+from dotenv import load_dotenv
+
+# Same defensive reasoning as google_auth.py's load_dotenv() call: these
+# three env vars are read at import time below, and this module happens
+# to currently get imported after database.py's own load_dotenv() has
+# already run (via routers/auth.py -> main.py's import order) — but that
+# ordering is easy to accidentally break later. Calling it again here
+# costs nothing (a safe no-op once database.py also has, and a no-op
+# entirely in production, where Render sets real env vars directly).
+load_dotenv()
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "console")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")

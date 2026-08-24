@@ -21,9 +21,21 @@ admin account by email would defeat that entirely.
 """
 import os
 
+from dotenv import load_dotenv
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 
+# database.py also calls this, but this module's GOOGLE_CLIENT_ID is read
+# at import time too, and main.py imports google_auth before models (and
+# therefore before database.py's load_dotenv() has had a chance to run —
+# see main.py's `from . import geo, google_auth, models, schemas`, where
+# import order is left-to-right). Without this, a real GOOGLE_CLIENT_ID in
+# backend/.env silently read as None locally: os.getenv() ran before the
+# .env file was ever loaded into the process's environment. Calling it
+# again here is a safe no-op once database.py also has, and does nothing
+# at all in production, where Render sets real environment variables
+# directly rather than through a .env file.
+load_dotenv()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 
 
