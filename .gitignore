@@ -12,3 +12,7 @@ __pycache__/
 
 # OS/editor
 .DS_Store
+
+# Internal docs — kept locally, not published on GitHub. README.md stays tracked.
+*.md
+!README.md
