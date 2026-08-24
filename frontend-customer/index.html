@@ -141,24 +141,14 @@
     </div>
   </section>
 
-  <!-- ============ PACKAGE ============ -->
-  <section class="screen" id="screen-package">
+  <!-- ============ AVAILABILITY ============ -->
+  <section class="screen" id="screen-availability">
     <div class="wizard-header">
       <button class="back-link" onclick="goToScreen('specialty')">← Back</button>
       <p class="step-label">Step 2 of 4</p>
     </div>
-    <h2 class="step-title">Choose a package</h2>
-    <div id="package-list" class="package-list"></div>
-  </section>
-
-  <!-- ============ AVAILABILITY ============ -->
-  <section class="screen" id="screen-availability">
-    <div class="wizard-header">
-      <button class="back-link" onclick="goToScreen('package')">← Back</button>
-      <p class="step-label">Step 3 of 4</p>
-    </div>
     <h2 class="step-title">When are you available?</h2>
-    <p class="card-sub" style="max-width:480px; margin:0 auto 18px;">Select every day and time window that works for you, then add them. We'll match you with an instructor who's free in at least one.</p>
+    <p class="card-sub" style="max-width:480px; margin:0 auto 18px;">Select every day and time window that works for you. We'll match you with an instructor who's free in at least one.</p>
 
     <p class="field-label" style="text-align:center;">Lesson length</p>
     <div class="window-grid" id="avail-duration-picker"></div>
@@ -170,9 +160,7 @@
     <div class="window-grid" id="avail-window-picker"></div>
 
     <div class="schedule-panel">
-      <button class="btn btn-outline btn-block" type="button" id="avail-add-btn" onclick="addAvailabilityWindow()" disabled>+ Add Selected Windows</button>
-      <div id="avail-window-list" style="margin-top:14px; display:flex; flex-wrap:wrap; gap:8px;"></div>
-      <label class="field-label" style="margin-top:18px;">Lessons per week <span style="font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+      <label class="field-label" style="margin-top:0;">Lessons per week <span style="font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
       <input class="field-input" id="avail-lessons-per-week" type="number" min="1" placeholder="e.g. 2">
       <label class="field-label" style="margin-top:18px;">Your city</label>
       <select class="field-select" id="avail-city"></select>
@@ -181,10 +169,20 @@
     </div>
   </section>
 
+  <!-- ============ PACKAGE ============ -->
+  <section class="screen" id="screen-package">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goToScreen('availability')">← Back</button>
+      <p class="step-label">Step 3 of 4</p>
+    </div>
+    <h2 class="step-title">Choose a package</h2>
+    <div id="package-list" class="package-list"></div>
+  </section>
+
   <!-- ============ PAYMENT ============ -->
   <section class="screen" id="screen-payment">
     <div class="wizard-header">
-      <button class="back-link" onclick="goToScreen('availability')">← Back</button>
+      <button class="back-link" onclick="goToScreen('package')">← Back</button>
       <p class="step-label">Step 4 of 4</p>
     </div>
     <div class="card wizard-card">

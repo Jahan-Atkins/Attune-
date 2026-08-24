@@ -274,14 +274,37 @@ Check the relevant one before assuming a feature doesn't exist yet.
   play elsewhere in this app. It's set at request-creation time, copied
   onto the new `Client` at confirm time (`_create_client_from_lesson_request`),
   and never checked against anything — don't add scheduling logic that
-  enforces it without an explicit ask. The availability step's day/window
-  pickers (main screen and the "Schedule Next Session" mini-picker) are
-  both multi-select: staged picks live in `Set`s, one "Add" computes the
-  full cross-product of staged days × staged windows and dedupes against
-  windows already added. `TIME_WINDOWS` (`frontend-customer/app.js`) is
-  eight 2-hour windows spanning 6am-10pm — if you change the windows,
-  update it in one place only; the mini-picker maps over the same
-  constant, it doesn't have its own copy.
+  enforces it without an explicit ask.
+- **The customer wizard order is specialty -> availability -> package ->
+  payment** — availability (duration + day/window picks + lessons-per-week)
+  comes *before* package on purpose, so the package screen can show real
+  duration-scaled prices (`loadPackages()` calls `estimatedPackagePrice()`
+  with the already-chosen `selectedDuration`) instead of a 30-min baseline
+  placeholder. `selectSpecialty()`/`rebookRequest()` now call
+  `initAvailabilityStep()` and go to `screen-availability`;
+  `submitAvailabilitySelection()` (the availability step's "Continue")
+  computes the windows and goes to `screen-package`; `selectPackage()`
+  builds the payment summary and goes to `screen-payment`. If you reorder
+  steps again, update all three of those, the `step-label`s, and every
+  screen's `back-link` target in `index.html` together — they're not
+  driven by one shared source of truth.
+- **The availability day/window pickers (main screen and the "Schedule
+  Next Session" mini-picker) have no separate "add" step or confirmation
+  chip list** — clicking a day or window button toggles its own highlight
+  directly, and that highlighted state *is* the selection; there's nothing
+  else to look at. The actual submitted windows are computed once, at
+  submit time, as the full cross product of every currently-highlighted
+  day × every currently-highlighted window (`submitAvailabilitySelection()`
+  / `submitScheduleNext()`). This used to be a two-phase stage-then-"+ Add
+  N Windows"-then-chip-list flow; it was simplified because the chips read
+  as "little popups" cluttering the screen. Don't reintroduce a staging
+  Set or an Add button here — if the cross-product-of-everything-highlighted
+  semantics ever needs to support multiple independent batches (e.g. "Mon
+  mornings" and "Fri evenings" without also implying "Mon evenings"), that's
+  a deliberate redesign, not a bug fix. `TIME_WINDOWS`
+  (`frontend-customer/app.js`) is eight 2-hour windows spanning 6am-10pm —
+  if you change the windows, update it in one place only; the mini-picker
+  maps over the same constant, it doesn't have its own copy.
 
 ## Commands
 
@@ -379,9 +402,11 @@ the dropdown).
 ## Current status
 
 **Done:** instructor auth/CRUD/profile/FAQs, a unified customer request
-flow (specialty -> package -> multiple availability windows (multi-select
-day/time pickers, 2-hour windows spanning 6am-10pm) + an optional
-lessons-per-week preference -> payment, one model — `LessonRequest` —
+flow (specialty -> multiple availability windows (multi-select day/time
+pickers, 2-hour windows spanning 6am-10pm, direct toggle-highlight, no
+add step or chip list) + an optional lessons-per-week preference ->
+package (shown at real duration-scaled prices, since duration's already
+picked by then) -> payment, one model — `LessonRequest` —
 going through a pending -> broadcast -> instructor-confirms lifecycle,
 not auto-matching; the old separate "package" vs. "schedule" fork and
 its `Booking`-create path are retired, see the non-negotiables above),

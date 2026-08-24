@@ -207,32 +207,37 @@ async function apiFetch(path, options = {}) {
 }
 
 /* =========================================================
-   WIZARD: specialty -> package -> availability -> payment -> match
+   WIZARD: specialty -> availability -> package -> payment -> match
    ========================================================= */
 async function goToSpecialtyStep() {
   goToScreen('specialty');
 }
 
-function selectSpecialty(specialty) {
+async function selectSpecialty(specialty) {
   preferredInstructorId = null; // a fresh specialty pick always means a regular (broadcast) request
   preferredInstructorName = null;
   selectedSpecialty = specialty;
-  loadPackages();
-  goToScreen('package');
+  await initAvailabilityStep();
+  goToScreen('availability');
 }
 
 /* Rebooking — "Book Again with [Name]" on a matched History card. Skips
-   straight to the package step the normal wizard would only reach after
-   picking a specialty, since that's already implied by the past match
-   being rebooked. */
-function rebookRequest(instructorId, specialty, encodedInstructorName) {
+   straight to the availability step the normal wizard would only reach
+   after picking a specialty, since that's already implied by the past
+   match being rebooked. */
+async function rebookRequest(instructorId, specialty, encodedInstructorName) {
   preferredInstructorId = instructorId;
   preferredInstructorName = decodeURIComponent(encodedInstructorName || '');
   selectedSpecialty = specialty;
-  loadPackages();
-  goToScreen('package');
+  await initAvailabilityStep();
+  goToScreen('availability');
 }
 
+/* Prices are duration-scaled (see estimatedPackagePrice below) and
+   duration is always picked on the availability step, which now runs
+   before this one — so by the time a customer sees package prices,
+   they're the real total for the lesson length already chosen, not a
+   30-min baseline placeholder. */
 async function loadPackages() {
   const listEl = document.getElementById('package-list');
   listEl.innerHTML = '<p class="card-sub">Loading packages…</p>';
@@ -240,14 +245,15 @@ async function loadPackages() {
     packageCatalog = await apiFetch('/api/customer/bookings/packages');
     const labels = { single: 'Single Session', pack4: '4-Session Package', pack8: '8-Session Package' };
     listEl.innerHTML = Object.entries(packageCatalog).map(([key, info]) => {
-      const perSession = (info.price / info.sessions).toFixed(0);
+      const total = estimatedPackagePrice(key, selectedDuration);
+      const perSession = Math.round(total / info.sessions);
       return `
         <button class="package-card" onclick="selectPackage('${key}')">
           <div>
             <p class="package-name">${labels[key] || key}</p>
             <p class="package-meta">${info.sessions} session${info.sessions > 1 ? 's' : ''} · $${perSession}/session</p>
           </div>
-          <p class="package-price">$${info.price}</p>
+          <p class="package-price">$${total}</p>
         </button>`;
     }).join('');
   } catch (err) {
@@ -256,10 +262,16 @@ async function loadPackages() {
   }
 }
 
-async function selectPackage(pkg) {
+function selectPackage(pkg) {
   selectedPackage = pkg;
-  await initAvailabilityStep();
-  goToScreen('availability');
+  const info = packageCatalog[pkg];
+  const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const rebookNote = preferredInstructorId ? ` · Booking again with ${preferredInstructorName}` : '';
+  const lessonsPerWeekNote = selectedLessonsPerWeek ? ` · ${selectedLessonsPerWeek}/week` : '';
+  const price = estimatedPackagePrice(pkg, selectedDuration);
+  document.getElementById('payment-summary').textContent =
+    `${specialtyLabel} · ${info.sessions} session${info.sessions > 1 ? 's' : ''} · ${selectedDuration} min · ${selectedWindows.length} window${selectedWindows.length > 1 ? 's' : ''} submitted${lessonsPerWeekNote} · $${price}${rebookNote}`;
+  goToScreen('payment');
 }
 
 /* =========================================================
@@ -288,8 +300,8 @@ async function loadDurations() {
 async function initAvailabilityStep() {
   selectedWindows = [];
   selectedDuration = null;
-  stagedAvailDays = new Set();
-  stagedAvailWindows = new Set();
+  selectedAvailDays = new Set();
+  selectedAvailWindowIndices = new Set();
 
   const durations = await loadDurations();
   const durationEl = document.getElementById('avail-duration-picker');
@@ -307,8 +319,6 @@ async function initAvailabilityStep() {
     `<button type="button" class="window-btn" data-window="${i}" onclick="toggleAvailWindow(${i})">${w.label}</button>`
   ).join('');
 
-  updateAddWindowsButton();
-  renderAvailabilityWindowList();
   document.getElementById('avail-lessons-per-week').value = '';
 
   const cities = await loadCities();
@@ -316,11 +326,13 @@ async function initAvailabilityStep() {
   cityEl.innerHTML = cities.map(c => `<option value="${c}">${c}</option>`).join('');
 }
 
-// Multi-select: any number of days and any number of time windows can be
-// staged at once. "+ Add" then adds the full cross product (every staged
-// day paired with every staged window) to selectedWindows in one click.
-let stagedAvailDays = new Set();
-let stagedAvailWindows = new Set();
+// Multi-select, no separate "add" step: a day/window button toggles its
+// own highlight and that's the selection, directly — no staging area, no
+// confirmation chip list. The actual submitted windows are the full cross
+// product (every selected day paired with every selected window),
+// computed once in submitAvailabilitySelection() below.
+let selectedAvailDays = new Set();
+let selectedAvailWindowIndices = new Set();
 
 function selectAvailDuration(minutes) {
   selectedDuration = minutes;
@@ -328,59 +340,13 @@ function selectAvailDuration(minutes) {
 }
 
 function toggleAvailDay(day) {
-  if (stagedAvailDays.has(day)) stagedAvailDays.delete(day); else stagedAvailDays.add(day);
-  document.querySelectorAll('#avail-day-picker .day-btn').forEach(b => b.classList.toggle('selected', stagedAvailDays.has(Number(b.dataset.day))));
-  updateAddWindowsButton();
+  if (selectedAvailDays.has(day)) selectedAvailDays.delete(day); else selectedAvailDays.add(day);
+  document.querySelectorAll('#avail-day-picker .day-btn').forEach(b => b.classList.toggle('selected', selectedAvailDays.has(Number(b.dataset.day))));
 }
 
 function toggleAvailWindow(index) {
-  if (stagedAvailWindows.has(index)) stagedAvailWindows.delete(index); else stagedAvailWindows.add(index);
-  document.querySelectorAll('#avail-window-picker .window-btn').forEach((b, i) => b.classList.toggle('selected', stagedAvailWindows.has(i)));
-  updateAddWindowsButton();
-}
-
-function updateAddWindowsButton() {
-  const count = stagedAvailDays.size * stagedAvailWindows.size;
-  const btn = document.getElementById('avail-add-btn');
-  btn.textContent = count > 0 ? `+ Add ${count} Window${count > 1 ? 's' : ''}` : '+ Add Selected Windows';
-  btn.disabled = count === 0;
-}
-
-function addAvailabilityWindow() {
-  const errorEl = document.getElementById('avail-error');
-  errorEl.style.display = 'none';
-  if (stagedAvailDays.size === 0 || stagedAvailWindows.size === 0) {
-    errorEl.textContent = 'Pick at least one day and one time window to add.';
-    errorEl.style.display = 'block';
-    return;
-  }
-  const existing = new Set(selectedWindows.map(w => `${w.day_of_week}-${w.start_time}`));
-  for (const day of stagedAvailDays) {
-    for (const windowIndex of stagedAvailWindows) {
-      const w = TIME_WINDOWS[windowIndex];
-      const key = `${day}-${w.start}`;
-      if (existing.has(key)) continue; // already added, skip the duplicate
-      existing.add(key);
-      selectedWindows.push({ day_of_week: day, start_time: w.start, end_time: w.end, _label: `${DAY_NAMES[day].slice(0, 3)}, ${w.label}` });
-    }
-  }
-  stagedAvailDays = new Set();
-  stagedAvailWindows = new Set();
-  document.querySelectorAll('#avail-day-picker .day-btn, #avail-window-picker .window-btn').forEach(b => b.classList.remove('selected'));
-  updateAddWindowsButton();
-  renderAvailabilityWindowList();
-}
-
-function removeAvailabilityWindow(index) {
-  selectedWindows.splice(index, 1);
-  renderAvailabilityWindowList();
-}
-
-function renderAvailabilityWindowList() {
-  const listEl = document.getElementById('avail-window-list');
-  listEl.innerHTML = selectedWindows.map((w, i) => `
-    <span class="day-btn selected" style="cursor:pointer;" onclick="removeAvailabilityWindow(${i})">${escapeHtml(w._label)} ✕</span>
-  `).join('') || '<p class="card-sub" style="margin:0;">No windows added yet.</p>';
+  if (selectedAvailWindowIndices.has(index)) selectedAvailWindowIndices.delete(index); else selectedAvailWindowIndices.add(index);
+  document.querySelectorAll('#avail-window-picker .window-btn').forEach((b, i) => b.classList.toggle('selected', selectedAvailWindowIndices.has(i)));
 }
 
 function submitAvailabilitySelection() {
@@ -391,22 +357,23 @@ function submitAvailabilitySelection() {
     errorEl.style.display = 'block';
     return;
   }
-  if (selectedWindows.length === 0) {
-    errorEl.textContent = 'Add at least one availability window to continue.';
+  if (selectedAvailDays.size === 0 || selectedAvailWindowIndices.size === 0) {
+    errorEl.textContent = 'Pick at least one day and one time window to continue.';
     errorEl.style.display = 'block';
     return;
+  }
+  selectedWindows = [];
+  for (const day of selectedAvailDays) {
+    for (const windowIndex of selectedAvailWindowIndices) {
+      const w = TIME_WINDOWS[windowIndex];
+      selectedWindows.push({ day_of_week: day, start_time: w.start, end_time: w.end });
+    }
   }
   const lessonsPerWeekRaw = document.getElementById('avail-lessons-per-week').value;
   selectedLessonsPerWeek = lessonsPerWeekRaw ? Number(lessonsPerWeekRaw) : null;
 
-  const info = packageCatalog[selectedPackage];
-  const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
-  const rebookNote = preferredInstructorId ? ` · Booking again with ${preferredInstructorName}` : '';
-  const lessonsPerWeekNote = selectedLessonsPerWeek ? ` · ${selectedLessonsPerWeek}/week` : '';
-  const price = estimatedPackagePrice(selectedPackage, selectedDuration);
-  document.getElementById('payment-summary').textContent =
-    `${specialtyLabel} · ${info.sessions} session${info.sessions > 1 ? 's' : ''} · ${selectedDuration} min · ${selectedWindows.length} window${selectedWindows.length > 1 ? 's' : ''} submitted${lessonsPerWeekNote} · $${price}${rebookNote}`;
-  goToScreen('payment');
+  loadPackages();
+  goToScreen('package');
 }
 
 /* Mirrors lesson_requests.py's PACKAGE_DISCOUNT/_price_for exactly — the
@@ -624,8 +591,6 @@ async function makeRecurring(lessonRequestId) {
    the wizard's global selectedWindows) — default is "use my original
    availability", which just omits availability_windows from the POST.
    ========================================================= */
-let scheduleNextWindows = {};
-
 function toggleScheduleNextForm(key, rootId) {
   const el = document.getElementById(`schedule-next-form-${key}`);
   if (el.style.display === 'block') {
@@ -633,9 +598,8 @@ function toggleScheduleNextForm(key, rootId) {
     el.innerHTML = '';
     return;
   }
-  scheduleNextWindows[key] = [];
-  stagedSNextDays[key] = new Set();
-  stagedSNextWindows[key] = new Set();
+  scheduleNextSelectedDays[key] = new Set();
+  scheduleNextSelectedWindows[key] = new Set();
   el.style.display = 'block';
   el.innerHTML = `
     <label style="display:flex; align-items:center; gap:8px; font-size:14px; cursor:pointer;">
@@ -648,8 +612,6 @@ function toggleScheduleNextForm(key, rootId) {
       <div class="window-grid" id="snext-window-picker-${key}" style="margin-top:10px;">
         ${TIME_WINDOWS.map((w, i) => `<button type="button" class="window-btn" onclick="toggleScheduleNextWindow('${key}', ${i})" data-window="${i}">${w.label}</button>`).join('')}
       </div>
-      <button class="btn btn-outline btn-block" type="button" id="snext-add-btn-${key}" style="margin-top:10px;" onclick="addScheduleNextWindow('${key}')" disabled>+ Add Selected Windows</button>
-      <div id="snext-window-list-${key}" style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;"></div>
     </div>
     <div id="snext-error-${key}" class="form-error" style="display:none; margin-top:8px;"></div>
     <button class="btn btn-primary btn-block" style="margin-top:10px; padding:10px;" onclick="submitScheduleNext('${key}', ${rootId})">Schedule It</button>`;
@@ -660,60 +622,22 @@ function toggleScheduleNextCustomWindows(key) {
   document.getElementById(`snext-custom-${key}`).style.display = useOriginal ? 'none' : 'block';
 }
 
-// Multi-select, same shape as the main availability screen's pickers —
-// see addAvailabilityWindow() above for the cross-product reasoning.
-let stagedSNextDays = {};
-let stagedSNextWindows = {};
+// Same toggle-is-the-selection shape as the main availability screen's
+// pickers — no staging area, no add step, no chip list. See
+// selectedAvailDays/selectedAvailWindowIndices above.
+let scheduleNextSelectedDays = {};
+let scheduleNextSelectedWindows = {};
 
 function toggleScheduleNextDay(key, day) {
-  const set = stagedSNextDays[key];
+  const set = scheduleNextSelectedDays[key];
   if (set.has(day)) set.delete(day); else set.add(day);
   document.querySelectorAll(`#snext-day-picker-${key} .day-btn`).forEach(b => b.classList.toggle('selected', set.has(Number(b.dataset.day))));
-  updateScheduleNextAddButton(key);
 }
 
 function toggleScheduleNextWindow(key, index) {
-  const set = stagedSNextWindows[key];
+  const set = scheduleNextSelectedWindows[key];
   if (set.has(index)) set.delete(index); else set.add(index);
   document.querySelectorAll(`#snext-window-picker-${key} .window-btn`).forEach((b, i) => b.classList.toggle('selected', set.has(i)));
-  updateScheduleNextAddButton(key);
-}
-
-function updateScheduleNextAddButton(key) {
-  const count = stagedSNextDays[key].size * stagedSNextWindows[key].size;
-  const btn = document.getElementById(`snext-add-btn-${key}`);
-  btn.textContent = count > 0 ? `+ Add ${count} Window${count > 1 ? 's' : ''}` : '+ Add Selected Windows';
-  btn.disabled = count === 0;
-}
-
-function addScheduleNextWindow(key) {
-  const errorEl = document.getElementById(`snext-error-${key}`);
-  errorEl.style.display = 'none';
-  const days = stagedSNextDays[key];
-  const windows = stagedSNextWindows[key];
-  if (days.size === 0 || windows.size === 0) {
-    errorEl.textContent = 'Pick at least one day and one time window to add.';
-    errorEl.style.display = 'block';
-    return;
-  }
-  const existing = new Set(scheduleNextWindows[key].map(w => `${w.day_of_week}-${w.start_time}`));
-  for (const day of days) {
-    for (const windowIndex of windows) {
-      const w = TIME_WINDOWS[windowIndex];
-      const dedupeKey = `${day}-${w.start}`;
-      if (existing.has(dedupeKey)) continue;
-      existing.add(dedupeKey);
-      scheduleNextWindows[key].push({ day_of_week: day, start_time: w.start, end_time: w.end, _label: `${DAY_NAMES[day].slice(0, 3)}, ${w.label}` });
-    }
-  }
-  stagedSNextDays[key] = new Set();
-  stagedSNextWindows[key] = new Set();
-  document.querySelectorAll(`#snext-day-picker-${key} .day-btn, #snext-window-picker-${key} .window-btn`).forEach(b => b.classList.remove('selected'));
-  updateScheduleNextAddButton(key);
-  const listEl = document.getElementById(`snext-window-list-${key}`);
-  listEl.innerHTML = scheduleNextWindows[key].map((win, i) =>
-    `<span class="day-btn selected" style="cursor:pointer;" onclick="scheduleNextWindows['${key}'].splice(${i},1); document.getElementById('snext-window-list-${key}').children[${i}].remove();">${escapeHtml(win._label)} ✕</span>`
-  ).join('');
 }
 
 async function submitScheduleNext(key, rootId) {
@@ -722,12 +646,21 @@ async function submitScheduleNext(key, rootId) {
   const useOriginal = document.getElementById(`snext-use-original-${key}`).checked;
   const payload = {};
   if (!useOriginal) {
-    if (!scheduleNextWindows[key] || scheduleNextWindows[key].length === 0) {
-      errorEl.textContent = 'Add at least one window, or use your original availability.';
+    const days = scheduleNextSelectedDays[key];
+    const windows = scheduleNextSelectedWindows[key];
+    if (days.size === 0 || windows.size === 0) {
+      errorEl.textContent = 'Pick at least one day and one time window, or use your original availability.';
       errorEl.style.display = 'block';
       return;
     }
-    payload.availability_windows = scheduleNextWindows[key].map(w => ({ day_of_week: w.day_of_week, start_time: w.start_time, end_time: w.end_time }));
+    const windowsPayload = [];
+    for (const day of days) {
+      for (const windowIndex of windows) {
+        const w = TIME_WINDOWS[windowIndex];
+        windowsPayload.push({ day_of_week: day, start_time: w.start, end_time: w.end });
+      }
+    }
+    payload.availability_windows = windowsPayload;
   }
   try {
     await apiFetch(`/api/customer/lesson-requests/${rootId}/schedule-next`, { method: 'POST', body: JSON.stringify(payload) });
