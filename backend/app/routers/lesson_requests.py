@@ -1,11 +1,14 @@
 """
 /api/customer/lesson-requests — the single entry point for every new
 customer request, package or not. A customer submits a package
-(single/pack4/pack8, same session counts as bookings.py's legacy
-PACKAGE_PRICING) plus a *set* of candidate availability windows and a
-duration; create_lesson_request() validates the card format (no charge
-yet), resolves the customer's city, and sets "pending" as long as at
-least one active instructor could fulfill at least one submitted window.
+(single/pack4/pack8/pack12/pack16, same session counts as bookings.py's
+legacy PACKAGE_PRICING) plus a *set* of candidate availability windows
+and a duration; create_lesson_request() validates the card format (no
+charge yet), geocodes the customer's typed address/city/state into real
+coordinates (geo.geocode_address — a live call to OpenStreetMap's
+Nominatim, the only external network dependency in this app), and sets
+"pending" as long as at least one active instructor could fulfill at
+least one submitted window.
 Whether any *particular* instructor actually sees it also depends on
 their own travel-distance preference and which of the submitted windows
 (if any) overlaps their own availability blocks — both evaluated
@@ -151,9 +154,9 @@ def create_lesson_request(
     if payload.duration_minutes not in DURATION_PRICING:
         raise HTTPException(status_code=400, detail="Lesson length must be 30-90 minutes, in 15-minute steps.")
     _validate_windows(payload.availability_windows)
-    city = geo.CITY_BY_NAME.get(payload.city)
-    if not city:
-        raise HTTPException(status_code=400, detail="Unknown city.")
+    coords = geo.geocode_address(payload.address, payload.city, payload.state)
+    if not coords:
+        raise HTTPException(status_code=400, detail="Couldn't find that address. Please check it and try again.")
     if payload.preferred_instructor_id is not None:
         _validate_preferred_instructor(
             db, payload.preferred_instructor_id, payload.specialty,
@@ -162,8 +165,11 @@ def create_lesson_request(
 
     _mock_charge(payload.card_number, payload.card_expiry, payload.card_cvc)
 
-    customer.latitude = city["lat"]
-    customer.longitude = city["lng"]
+    customer.address_line = payload.address
+    customer.city_name = payload.city
+    customer.state_name = payload.state
+    customer.latitude = coords["lat"]
+    customer.longitude = coords["lng"]
 
     sessions_total = PACKAGE_PRICING[payload.package]["sessions"]
     price = _price_for(payload.package, payload.duration_minutes)

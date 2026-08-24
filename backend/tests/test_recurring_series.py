@@ -8,7 +8,7 @@ TUESDAY = 1
 
 def _lesson_payload(package="single", day=TUESDAY, start="09:00", end="11:00", duration=30):
     return {
-        "specialty": "yoga", "package": package, "city": "New York, NY", "duration_minutes": duration,
+        "specialty": "yoga", "package": package, "address": "123 Main St", "city": "New York", "state": "NY", "duration_minutes": duration,
         "availability_windows": [{"day_of_week": day, "start_time": start, "end_time": end}],
         **CARD,
     }

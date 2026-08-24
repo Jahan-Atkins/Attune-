@@ -12,7 +12,7 @@ TUESDAY = 1
 
 def _lesson_payload(**overrides):
     payload = {
-        "specialty": "yoga", "package": "single", "city": "New York, NY", "duration_minutes": 30,
+        "specialty": "yoga", "package": "single", "address": "123 Main St", "city": "New York", "state": "NY", "duration_minutes": 30,
         "availability_windows": [{"day_of_week": TUESDAY, "start_time": "09:00", "end_time": "11:00"}],
         **CARD,
     }

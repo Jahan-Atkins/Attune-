@@ -238,6 +238,14 @@ class Customer(Base):
     hashed_password = Column(String, nullable=False)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+    # What the customer actually typed on the availability step, geocoded
+    # into the lat/lng above via geo.geocode_address() — stored verbatim
+    # for display. Named _name/_line rather than plain city/state/address
+    # because `city` below stays a computed property, not a column — see
+    # its docstring for why.
+    address_line = Column(String, nullable=True)
+    city_name = Column(String, nullable=True)
+    state_name = Column(String, nullable=True)
 
     # Same platform-controlled suspension as Instructor above.
     suspended = Column(Boolean, default=False)
@@ -249,8 +257,17 @@ class Customer(Base):
 
     @property
     def city(self):
-        """Display name for latitude/longitude — shown to instructors
-        reviewing a pending request. See geo.py."""
+        """Display string for wherever this customer is — shown to
+        instructors reviewing a pending request. Prefers city_name/
+        state_name (what they actually typed during the new geocoded
+        lesson-request flow); falls back to a demo-city reverse lookup
+        for a customer who only ever went through the old pre-cutover
+        Booking flow, whose latitude/longitude were set directly from a
+        DEMO_CITIES pick and who has no city_name/state_name at all. Same
+        "don't break what already worked" reasoning as everywhere else
+        Booking stays supported after the cutover — see routers/bookings.py."""
+        if self.city_name:
+            return f"{self.city_name}, {self.state_name}" if self.state_name else self.city_name
         return geo.city_name_for_coords(self.latitude, self.longitude)
 
 

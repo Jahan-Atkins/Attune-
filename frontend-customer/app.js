@@ -46,7 +46,6 @@ const TIME_WINDOWS = [
 let selectedWindows = []; // [{day_of_week, start_time, end_time}, ...] — built up on the availability screen
 let selectedDuration = null;
 let selectedLessonsPerWeek = null; // a stated preference, not enforced — see models.LessonRequest
-let citiesCache = [];
 let durationCatalog = {};
 let lastRequestType = null; // 'package' | 'schedule' — which /me endpoint checkLatestStatus() re-polls
 let preferredInstructorId = null; // set by "Book Again with [Name]", sent as-is in the final submit payload
@@ -275,18 +274,8 @@ function selectPackage(pkg) {
 }
 
 /* =========================================================
-   WIZARD: availability (duration + multiple day/window picks + city)
+   WIZARD: availability (duration + multiple day/window picks + address)
    ========================================================= */
-async function loadCities() {
-  if (citiesCache.length) return citiesCache;
-  try {
-    citiesCache = await apiFetch('/api/cities');
-  } catch (err) {
-    console.error('Failed to load cities:', err);
-  }
-  return citiesCache;
-}
-
 async function loadDurations() {
   if (Object.keys(durationCatalog).length) return durationCatalog;
   try {
@@ -320,10 +309,9 @@ async function initAvailabilityStep() {
   ).join('');
 
   document.getElementById('avail-lessons-per-week').value = '';
-
-  const cities = await loadCities();
-  const cityEl = document.getElementById('avail-city');
-  cityEl.innerHTML = cities.map(c => `<option value="${c}">${c}</option>`).join('');
+  document.getElementById('avail-address').value = '';
+  document.getElementById('avail-city').value = '';
+  document.getElementById('avail-state').value = '';
 }
 
 // Multi-select, no separate "add" step: a day/window button toggles its
@@ -359,6 +347,11 @@ function submitAvailabilitySelection() {
   }
   if (selectedAvailDays.size === 0 || selectedAvailWindowIndices.size === 0) {
     errorEl.textContent = 'Pick at least one day and one time window to continue.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  if (!document.getElementById('avail-address').value.trim() || !document.getElementById('avail-city').value.trim() || !document.getElementById('avail-state').value.trim()) {
+    errorEl.textContent = 'Enter your address, city, and state to continue.';
     errorEl.style.display = 'block';
     return;
   }
@@ -398,7 +391,9 @@ async function submitPayment(evt) {
   const payload = {
     specialty: selectedSpecialty,
     package: selectedPackage,
-    city: document.getElementById('avail-city').value,
+    address: document.getElementById('avail-address').value.trim(),
+    city: document.getElementById('avail-city').value.trim(),
+    state: document.getElementById('avail-state').value.trim(),
     duration_minutes: selectedDuration,
     availability_windows: selectedWindows.map(w => ({ day_of_week: w.day_of_week, start_time: w.start_time, end_time: w.end_time })),
     lessons_per_week: selectedLessonsPerWeek,

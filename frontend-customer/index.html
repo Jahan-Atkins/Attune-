@@ -162,8 +162,18 @@
     <div class="schedule-panel">
       <label class="field-label" style="margin-top:0;">Lessons per week <span style="font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
       <input class="field-input" id="avail-lessons-per-week" type="number" min="1" placeholder="e.g. 2">
-      <label class="field-label" style="margin-top:18px;">Your city</label>
-      <select class="field-select" id="avail-city"></select>
+      <label class="field-label" style="margin-top:18px;">Street address</label>
+      <input class="field-input" id="avail-address" placeholder="123 Main St">
+      <div class="field-row">
+        <div>
+          <label class="field-label">City</label>
+          <input class="field-input" id="avail-city" placeholder="New York">
+        </div>
+        <div>
+          <label class="field-label">State</label>
+          <input class="field-input" id="avail-state" placeholder="NY">
+        </div>
+      </div>
       <div id="avail-error" class="form-error" style="display:none; margin-top:12px;"></div>
       <button class="btn btn-primary btn-block" style="margin-top:18px;" onclick="submitAvailabilitySelection()">Continue</button>
     </div>

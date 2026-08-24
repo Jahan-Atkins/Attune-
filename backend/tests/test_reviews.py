@@ -50,7 +50,7 @@ def test_create_review_on_matched_lesson_request(client, customer_auth_headers):
     headers = {"Authorization": f"Bearer {token}"}
     client.post("/api/availability", json={"day_of_week": 1, "start_time": "08:00", "end_time": "12:00"}, headers=headers)
     res = client.post("/api/customer/lesson-requests", json={
-        "specialty": "yoga", "package": "single", "city": CITY, "duration_minutes": 30,
+        "specialty": "yoga", "package": "single", "address": "123 Main St", "city": "New York", "state": "NY", "duration_minutes": 30,
         "availability_windows": [{"day_of_week": 1, "start_time": "09:00", "end_time": "11:00"}], **CARD,
     }, headers=customer_auth_headers)
     lesson_request_id = res.json()["id"]

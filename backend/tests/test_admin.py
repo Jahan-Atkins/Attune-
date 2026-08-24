@@ -94,7 +94,7 @@ def test_suspended_instructor_disappears_from_broadcast(client, customer_auth_he
     client.put(f"/api/admin/instructors/{instructor_id}/suspend", json={}, headers=admin_auth_headers)
 
     lesson_request = client.post("/api/customer/lesson-requests", json={
-        "specialty": "yoga", "package": "single", "city": "New York, NY", "duration_minutes": 30,
+        "specialty": "yoga", "package": "single", "address": "123 Main St", "city": "New York", "state": "NY", "duration_minutes": 30,
         "availability_windows": [{"day_of_week": TUESDAY, "start_time": "09:00", "end_time": "11:00"}], **CARD,
     }, headers=customer_auth_headers).json()
     # No active, non-suspended yoga instructor exists in this isolated test DB.
@@ -160,7 +160,7 @@ def test_admin_filters_bookings_by_status(client, customer_auth_headers, admin_a
 
 def test_admin_force_cancel_lesson_request(client, customer_auth_headers, admin_auth_headers):
     lr = client.post("/api/customer/lesson-requests", json={
-        "specialty": "yoga", "package": "single", "city": "New York, NY", "duration_minutes": 30,
+        "specialty": "yoga", "package": "single", "address": "123 Main St", "city": "New York", "state": "NY", "duration_minutes": 30,
         "availability_windows": [{"day_of_week": TUESDAY, "start_time": "09:00", "end_time": "11:00"}], **CARD,
     }, headers=customer_auth_headers).json()
 

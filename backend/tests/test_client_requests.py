@@ -16,9 +16,10 @@ def _window(day=TUESDAY, start="09:00", end="11:00"):
     return {"day_of_week": day, "start_time": start, "end_time": end}
 
 
-def _lesson_payload(package="single", windows=None, **overrides):
+def _lesson_payload(package="single", windows=None, city_state=NYC, **overrides):
+    city, state = city_state.split(", ")
     payload = {
-        "specialty": "yoga", "package": package, "city": NYC, "duration_minutes": 30,
+        "specialty": "yoga", "package": package, "address": "123 Main St", "city": city, "state": state, "duration_minutes": 30,
         "availability_windows": windows if windows is not None else [_window()],
         **CARD,
     }
@@ -191,7 +192,7 @@ def test_pending_lesson_request_hidden_beyond_max_travel_distance(client, custom
         client, "sched_too_far@example.com", specialty="yoga", city=CHICAGO, max_distance=500,
         availability=[(TUESDAY, "08:00", "12:00")],
     )
-    client.post("/api/customer/lesson-requests", json=_lesson_payload(city=NYC), headers=customer_auth_headers)
+    client.post("/api/customer/lesson-requests", json=_lesson_payload(city_state=NYC), headers=customer_auth_headers)
 
     body = client.get("/api/client-requests", headers=headers).json()
     assert body == []
@@ -204,7 +205,7 @@ def test_confirm_lesson_request_sets_matched_window_and_distance(client, custome
         client, "sched_confirm@example.com", specialty="yoga", city=CHICAGO,
         availability=[(TUESDAY, "08:00", "12:00")],
     )
-    res = client.post("/api/customer/lesson-requests", json=_lesson_payload(city=NYC), headers=customer_auth_headers)
+    res = client.post("/api/customer/lesson-requests", json=_lesson_payload(city_state=NYC), headers=customer_auth_headers)
     lesson_request_id = res.json()["id"]
 
     confirm_res = client.put(f"/api/client-requests/lesson-requests/{lesson_request_id}/confirm", headers=headers)

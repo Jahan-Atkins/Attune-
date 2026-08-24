@@ -8,11 +8,14 @@ def _window(day=TUESDAY, start="09:00", end="11:00"):
     return {"day_of_week": day, "start_time": start, "end_time": end}
 
 
-def _request_payload(package="single", windows=None, **overrides):
+def _request_payload(package="single", windows=None, city_state="New York, NY", **overrides):
+    city, state = city_state.split(", ")
     payload = {
         "specialty": "yoga",
         "package": package,
-        "city": "New York, NY",
+        "address": "123 Main St",
+        "city": city,
+        "state": state,
         "duration_minutes": 30,
         "availability_windows": windows if windows is not None else [_window()],
         **CARD,
@@ -41,8 +44,8 @@ def test_reject_unknown_package(client, customer_auth_headers):
     assert res.status_code == 400
 
 
-def test_reject_unknown_city(client, customer_auth_headers):
-    res = client.post("/api/customer/lesson-requests", json=_request_payload(city="Nowhere, XX"), headers=customer_auth_headers)
+def test_reject_unresolvable_address(client, customer_auth_headers):
+    res = client.post("/api/customer/lesson-requests", json=_request_payload(city_state="Nowhere, XX"), headers=customer_auth_headers)
     assert res.status_code == 400
 
 
@@ -128,6 +131,19 @@ def test_lesson_request_stores_notes(client, customer_auth_headers):
         headers=customer_auth_headers,
     )
     assert res.json()["notes"] == "First time doing a sound bath, a little nervous!"
+
+
+def test_lesson_request_geocodes_address_into_customer_city(client, customer_auth_headers):
+    # No lesson-request field exposes the customer's own address/city/state
+    # directly — check indirectly via an instructor's pending-list view,
+    # same as every other customer_city assertion in this test suite.
+    token = signup_instructor_with_specialty(client, "geocode_check@example.com", specialty="yoga")
+    headers = {"Authorization": f"Bearer {token}"}
+    add_availability(client, headers, TUESDAY, "08:00", "12:00")
+    client.post("/api/customer/lesson-requests", json=_request_payload(city_state="Chicago, IL"), headers=customer_auth_headers)
+
+    body = client.get("/api/client-requests", headers=headers).json()
+    assert body[0]["customer_city"] == "Chicago, IL"
 
 
 def test_lesson_request_stores_lessons_per_week(client, customer_auth_headers):

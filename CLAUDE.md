@@ -278,6 +278,38 @@ Check the relevant one before assuming a feature doesn't exist yet.
   specifically to catch a regression here. If you add another place that
   needs to know "which table does this row's id belong to," use `source`,
   never `request_type`.
+- **The customer flow uses real geocoding; the instructor flow still
+  doesn't.** `geo.geocode_address()` calls OpenStreetMap's free Nominatim
+  API to turn whatever address/city/state a customer types on the
+  availability step into real coordinates — the only external network
+  call anywhere in this app. The instructor profile form and
+  instructor-created open session listings are unchanged: still a
+  dropdown over the fixed `DEMO_CITIES` list, no geocoding, by design —
+  don't convert those too without being asked, and don't assume
+  `geo.CITY_BY_NAME`/`DEMO_CITIES` are dead code just because the
+  customer side stopped using them.
+  - `Customer` stores what was typed in `address_line`/`city_name`/
+    `state_name` (real columns) plus the geocoded `latitude`/`longitude`.
+    `Customer.city` stays a *computed property*, not a column — it
+    combines `city_name`+`state_name` for display, but falls back to the
+    old `geo.city_name_for_coords()` reverse lookup for a customer who
+    only ever went through the legacy pre-cutover `Booking` flow (whose
+    lat/lng came from a `DEMO_CITIES` pick directly, with no
+    `city_name`/`state_name` ever set). Don't collapse that fallback away
+    — `test_pending_booking_visible_to_matching_instructor` depends on it.
+  - `tests/conftest.py`'s `fake_geocoding` fixture (autouse) monkeypatches
+    `geo.geocode_address` for the entire suite, resolving `"city, state"`
+    against the same `CITY_BY_NAME` coordinates the old dropdown used —
+    so every existing distance-based assertion keeps working unchanged,
+    and the suite never makes a real network call (slow, flaky, and
+    Nominatim's usage policy caps unauthenticated use at ~1 req/second —
+    a real call per test would risk tripping that). If you add a test
+    that needs an address to fail geocoding, use a city/state pair that
+    isn't one of the six `DEMO_CITIES` names.
+  - A failed/unresolvable geocode is a 400 ("Couldn't find that address.
+    Please check it and try again."), not a crash or a silent fallback —
+    keep it that way; don't guess coordinates for an address Nominatim
+    couldn't find.
 - **A `LessonRequest` also carries an optional `lessons_per_week`** — a
   stated preference, not an enforced constraint, same unvalidated-integer
   role `Client.lessons_per_week`/`SessionListing.lessons_per_week` already
@@ -326,7 +358,7 @@ alembic upgrade head
 python seed.py           # see logins below
 python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 233 tests in backend/tests/ — run after any route change
+pytest                    # 234 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -349,6 +381,15 @@ the server and running the test suite (Run and Debug panel → pick from
 the dropdown).
 
 ## Known gotchas
+
+- **Nominatim geocoding is a real network call with no retry and an
+  8-second timeout** (`geo.geocode_address()`) — if it's slow, rate-limited,
+  or unreachable, `create_lesson_request` returns the same 400 as a
+  genuinely unresolvable address ("Couldn't find that address...").
+  There's no way from that response alone to tell "bad address" apart
+  from "Nominatim had a bad moment" — if a customer reports this
+  happening on an address that looks obviously valid, that's the first
+  thing to suspect, not a bug in the parsing.
 
 - **`backend/.env` may point at production Postgres, not local SQLite.**
   It gets pointed there deliberately during a deploy (see the Render
@@ -423,21 +464,24 @@ its `Booking`-create path are retired, see the non-negotiables above),
 multi-session packages scheduled one session at a time after the first
 match (including a "Schedule Next Session" mini-picker with the same
 multi-select behavior as the main flow), instructor weekly availability
-+ a travel-distance preference, a fake demo-city location system,
-duration- and package-scaled pricing, a Client Requests map (Leaflet via
-CDN), Postgres + deployment (Render, live), a PWA (manifest + service
-worker) for both the instructor and customer frontends, Filter/Sort on
-Open Sessions, a full Client Details page (location, recurring
-availability, itemized lesson list), and all seven parts of
-`PLATFORM-EXPANSION-ROADMAP.md`: contact info exchange, booking history,
-reviews & ratings, rebooking the same instructor, recurring weekly
-bookings, email notifications, and a full admin side (`frontend-admin/`,
-suspension, force-cancel, FAQ CRUD, metrics), a client-deletion approval
-workflow (instructor requests, admin approves/denies), and three
-launch-readiness items: rate limiting on login/forgot-password,
-self-serve password reset for instructors and customers, and a
-reporting/blocking mechanism between matched instructors and customers.
-233 passing tests cover all of it. See
++ a travel-distance preference, real address geocoding for the customer
+flow (OpenStreetMap Nominatim) alongside the still-fake demo-city
+dropdown the instructor flow uses, five package tiers (single/pack4/
+pack8/pack12/pack16 — the last two priced at the full duration rate,
+no discount) with duration- and package-scaled pricing, a Client
+Requests map (Leaflet via CDN), Postgres + deployment (Render, live), a
+PWA (manifest + service worker) for both the instructor and customer
+frontends, Filter/Sort on Open Sessions, a full Client Details page
+(location, recurring availability, itemized lesson list), and all seven
+parts of `PLATFORM-EXPANSION-ROADMAP.md`: contact info exchange, booking
+history, reviews & ratings, rebooking the same instructor, recurring
+weekly bookings, email notifications, and a full admin side
+(`frontend-admin/`, suspension, force-cancel, FAQ CRUD, metrics), a
+client-deletion approval workflow (instructor requests, admin
+approves/denies), and three launch-readiness items: rate limiting on
+login/forgot-password, self-serve password reset for instructors and
+customers, and a reporting/blocking mechanism between matched
+instructors and customers. 234 passing tests cover all of it. See
 `SCHEDULING-ROADMAP.md`,
 `REQUEST-CONFIRM-ROADMAP.md`, `CLIENT-DETAILS-ROADMAP.md`, and
 `PLATFORM-EXPANSION-ROADMAP.md` for how each piece got built, and

@@ -17,7 +17,7 @@ def _window(day=TUESDAY, start="09:00", end="12:00"):
 
 def _package_payload(package="pack4", windows=None, **overrides):
     payload = {
-        "specialty": "yoga", "package": package, "city": "New York, NY", "duration_minutes": 30,
+        "specialty": "yoga", "package": package, "address": "123 Main St", "city": "New York", "state": "NY", "duration_minutes": 30,
         "availability_windows": windows if windows is not None else [_window()],
         **CARD,
     }

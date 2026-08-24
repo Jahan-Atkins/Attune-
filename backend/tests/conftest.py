@@ -32,6 +32,25 @@ def fresh_database():
 
 
 @pytest.fixture(autouse=True)
+def fake_geocoding(monkeypatch):
+    """create_lesson_request() calls geo.geocode_address(), a real network
+    call to OpenStreetMap's Nominatim — hitting that for real on every
+    test run would make the suite slow, flaky, dependent on internet
+    access, and risks tripping Nominatim's ~1 request/second usage
+    policy. Fake it deterministically instead: resolve "city, state"
+    against the same DEMO_CITIES coordinates the old fixed dropdown used,
+    so every existing distance-based assertion (which was written
+    against those exact coordinates) keeps working unchanged. A
+    city/state combo that isn't a known demo city (e.g. an
+    invalid-address test) correctly resolves to None, the same way the
+    old CITY_BY_NAME.get() did for an unknown city name."""
+    def fake_geocode(address, city, state):
+        return geo.CITY_BY_NAME.get(f"{city}, {state}")
+    monkeypatch.setattr(geo, "geocode_address", fake_geocode)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def fresh_rate_limits():
     """rate_limit's attempt counts live in a plain module-level dict, not
     the database, so fresh_database's drop/create doesn't touch them —

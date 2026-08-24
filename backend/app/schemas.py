@@ -232,7 +232,9 @@ class AvailabilityBlockOut(AvailabilityBlockBase):
 class LessonRequestCreate(BaseModel):
     specialty: str  # "yoga" | "sound_bath"
     package: str  # "single" | "pack4" | "pack8" | "pack12" | "pack16"
-    city: str  # one of geo.DEMO_CITIES' names
+    address: str  # street address — combined with city/state and geocoded via geo.geocode_address()
+    city: str
+    state: str
     duration_minutes: int  # 30-90, 15-minute steps — see PACKAGE_DISCOUNT/DURATION_PRICING
     availability_windows: List[AvailabilityBlockBase]  # at least one — the candidate windows to match against
     lessons_per_week: Optional[int] = None  # a stated preference, not enforced — see models.LessonRequest

@@ -10,12 +10,11 @@ from .conftest import add_availability
 from .test_reports import _make_matched_pair
 
 CARD = {"card_name": "Jordan Lee", "card_number": "4242 4242 4242 4242", "card_expiry": "12/28", "card_cvc": "123"}
-CITY = "New York, NY"
 
 
 def _lesson_payload(**overrides):
     payload = {
-        "specialty": "yoga", "package": "single", "city": CITY, "duration_minutes": 30,
+        "specialty": "yoga", "package": "single", "address": "123 Main St", "city": "New York", "state": "NY", "duration_minutes": 30,
         "availability_windows": [{"day_of_week": 1, "start_time": "09:00", "end_time": "11:00"}],
         **CARD,
     }
