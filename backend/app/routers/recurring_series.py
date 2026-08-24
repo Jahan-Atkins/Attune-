@@ -85,11 +85,12 @@ def _notify_series(db: Session, series: models.RecurringSeries, event: str) -> N
         subject=f"Standing weekly booking {event}",
         body=f"Your recurring booking ({detail}) with {instructor.name} was {event}.",
     )
-    send_email(
-        to=instructor.email,
-        subject=f"Standing weekly booking {event}",
-        body=f"The recurring booking ({detail}) with {customer.name} was {event}.",
-    )
+    if instructor.email_notifications:
+        send_email(
+            to=instructor.email,
+            subject=f"Standing weekly booking {event}",
+            body=f"The recurring booking ({detail}) with {customer.name} was {event}.",
+        )
 
 
 @router.post("/api/customer/recurring-series", response_model=schemas.RecurringSeriesOut, status_code=201)

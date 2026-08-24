@@ -169,6 +169,28 @@ Check the relevant one before assuming a feature doesn't exist yet.
   see `_send_via_resend`'s docstring for why a notification failure must
   never break the primary action (confirming a match, cancelling a
   series) that triggered it.
+- **`Instructor.email_notifications` is a single on/off switch, not
+  per-notification-type granularity** — same "self-controlled, defaults
+  on" shape as `active`. It's checked inline (`if instructor.email_notifications:`)
+  immediately before every `send_email()` call that targets an
+  instructor: `_notify_match` (client_requests.py), `_notify_session_scheduled`
+  (lesson_requests.py), `_notify_series` (recurring_series.py), the review
+  notification (reviews.py), and both client-deletion decision routes
+  (admin.py). Never checked before a `send_email()` call that targets a
+  *customer* — that's a different account with its own (not yet built)
+  preference, not the instructor's. If you add a new instructor-facing
+  `send_email()` call, guard it the same way; if you add a customer-facing
+  one, don't guard it with this flag. Reached from the instructor app's
+  Profile screen > "Notification Settings" row.
+- **"Change Password" (Profile screen, logged in) is a different flow
+  from forgot/reset-password (auth screen, logged out) — don't conflate
+  them.** `POST /api/auth/change-password` requires the *current*
+  password (verified via `security.verify_password()`) plus a new one,
+  and is rate-limited by instructor id the same way login is — a stolen
+  session token shouldn't grant unlimited guesses at the real password.
+  A Google-only account (`hashed_password is None`) gets a distinct 400
+  ("signed in with Google and has no password to change") rather than
+  the generic "incorrect" message, since there's nothing to get right.
 - **"Sign in with Google" exists for Instructor and Customer accounts,
   never for Admin.** `google_auth.py`'s `verify_google_id_token()` checks
   a browser-side ID token against Google's public keys via the
@@ -436,7 +458,7 @@ alembic upgrade head
 python seed.py           # see logins below
 python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 253 tests in backend/tests/ — run after any route change
+pytest                    # 264 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -572,10 +594,14 @@ weekly bookings, real email notifications (Resend, opt-in via
 (`frontend-admin/`, suspension, force-cancel, FAQ CRUD, metrics), a
 client-deletion approval workflow (instructor requests, admin
 approves/denies), three launch-readiness items: rate limiting on
-login/forgot-password, self-serve password reset for instructors and
-customers, and a reporting/blocking mechanism between matched
-instructors and customers, and "Sign in with Google" for instructors and
-customers (never admin). 253 passing tests cover all of it. See
+login/forgot-password, self-serve password reset (both the forgot-
+password-while-logged-out flow and a logged-in "Change Password" in the
+instructor's own profile settings) for instructors and customers, a
+reporting/blocking mechanism between matched instructors and customers,
+"Sign in with Google" for instructors and customers (never admin), and
+a per-instructor email-notifications on/off toggle (Profile > Notification
+Settings) checked before every send_email() call that targets an
+instructor. 264 passing tests cover all of it. See
 `SCHEDULING-ROADMAP.md`,
 `REQUEST-CONFIRM-ROADMAP.md`, `CLIENT-DETAILS-ROADMAP.md`, and
 `PLATFORM-EXPANSION-ROADMAP.md` for how each piece got built, and

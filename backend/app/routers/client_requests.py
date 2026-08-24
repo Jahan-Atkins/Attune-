@@ -226,11 +226,12 @@ def _notify_match(customer: models.Customer, instructor: models.Instructor) -> N
         subject=f"You're matched with {instructor.name}",
         body=f"{instructor.name} confirmed your request. Contact them directly: {instructor.email}, {instructor.phone}.",
     )
-    send_email(
-        to=instructor.email,
-        subject=f"New client: {customer.name}",
-        body=f"You confirmed a request from {customer.name}. Contact them directly: {customer.email}, {customer.phone}.",
-    )
+    if instructor.email_notifications:
+        send_email(
+            to=instructor.email,
+            subject=f"New client: {customer.name}",
+            body=f"You confirmed a request from {customer.name}. Contact them directly: {customer.email}, {customer.phone}.",
+        )
 
 
 @router.put("/bookings/{booking_id}/confirm", response_model=schemas.ClientRequestConfirmedOut)

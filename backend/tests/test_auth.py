@@ -80,3 +80,51 @@ def test_google_only_account_cannot_log_in_with_a_password(client, monkeypatch):
     client.post("/api/auth/google", json={"id_token": "fake-token"})
     res = client.post("/api/auth/login", data={"username": "nopass@example.com", "password": "anything"})
     assert res.status_code == 401
+
+
+def test_change_password_requires_auth(client):
+    res = client.post("/api/auth/change-password", json={"current_password": "a", "new_password": "newpass123"})
+    assert res.status_code == 401
+
+
+def test_change_password_success(client):
+    token = signup(client, email="changepw@example.com", password="oldpass123")
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "oldpass123", "new_password": "newpass456"},
+        headers=headers,
+    )
+    assert res.status_code == 200
+
+    # Old password no longer works, new one does.
+    old = client.post("/api/auth/login", data={"username": "changepw@example.com", "password": "oldpass123"})
+    assert old.status_code == 401
+    new = client.post("/api/auth/login", data={"username": "changepw@example.com", "password": "newpass456"})
+    assert new.status_code == 200
+
+
+def test_change_password_rejects_wrong_current_password(client):
+    token = signup(client, email="changepw2@example.com", password="oldpass123")
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "totallywrong", "new_password": "newpass456"},
+        headers=headers,
+    )
+    assert res.status_code == 400
+
+    still_old = client.post("/api/auth/login", data={"username": "changepw2@example.com", "password": "oldpass123"})
+    assert still_old.status_code == 200
+
+
+def test_change_password_rejected_for_google_only_account(client, monkeypatch):
+    monkeypatch.setattr(auth_module, "verify_google_id_token", _fake_google_identity(email="googleonly@example.com"))
+    google_res = client.post("/api/auth/google", json={"id_token": "fake-token"})
+    headers = {"Authorization": f"Bearer {google_res.json()['access_token']}"}
+    res = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "anything", "new_password": "newpass456"},
+        headers=headers,
+    )
+    assert res.status_code == 400

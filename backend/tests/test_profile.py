@@ -7,6 +7,7 @@ def test_get_profile_defaults(client, auth_headers):
     res = client.get("/api/profile", headers=auth_headers)
     assert res.status_code == 200
     assert res.json()["active"] is True
+    assert res.json()["email_notifications"] is True
 
 
 def test_update_profile_partial(client, auth_headers):
@@ -22,6 +23,16 @@ def test_toggle_active(client, auth_headers):
     res = client.put("/api/profile", json={"active": False}, headers=auth_headers)
     assert res.status_code == 200
     assert res.json()["active"] is False
+
+
+def test_toggle_email_notifications(client, auth_headers):
+    res = client.put("/api/profile", json={"email_notifications": False}, headers=auth_headers)
+    assert res.status_code == 200
+    assert res.json()["email_notifications"] is False
+
+    # Persists across a fresh GET, not just echoed back on the same request.
+    fetched = client.get("/api/profile", headers=auth_headers)
+    assert fetched.json()["email_notifications"] is False
 
 
 def test_update_profile_geocodes_city(client, auth_headers):

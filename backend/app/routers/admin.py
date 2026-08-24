@@ -312,13 +312,15 @@ def approve_client_deletion(request_id: int, db: Session = Depends(get_db), admi
     request = _get_deletion_request(request_id, db)
     out = deletion_request_out(request)  # built before the delete — the client won't be there to read from after
     instructor_email = request.instructor.email
+    instructor_wants_email = request.instructor.email_notifications
     db.delete(request.client)  # cascades to lessons and the request row itself (Client.deletion_requests)
     db.commit()
-    send_email(
-        to=instructor_email,
-        subject=f"Client deletion approved: {out.client_name}",
-        body=f"An admin approved your request to delete {out.client_name}. This client has been removed.",
-    )
+    if instructor_wants_email:
+        send_email(
+            to=instructor_email,
+            subject=f"Client deletion approved: {out.client_name}",
+            body=f"An admin approved your request to delete {out.client_name}. This client has been removed.",
+        )
     return out
 
 
@@ -327,13 +329,15 @@ def deny_client_deletion(request_id: int, db: Session = Depends(get_db), admin: 
     request = _get_deletion_request(request_id, db)
     out = deletion_request_out(request)
     instructor_email = request.instructor.email
+    instructor_wants_email = request.instructor.email_notifications
     db.delete(request)
     db.commit()
-    send_email(
-        to=instructor_email,
-        subject=f"Client deletion denied: {out.client_name}",
-        body=f"An admin denied your request to delete {out.client_name}. This client remains on your practice.",
-    )
+    if instructor_wants_email:
+        send_email(
+            to=instructor_email,
+            subject=f"Client deletion denied: {out.client_name}",
+            body=f"An admin denied your request to delete {out.client_name}. This client remains on your practice.",
+        )
     return out
 
 

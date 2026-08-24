@@ -10,6 +10,26 @@ from app.rate_limit import MAX_ATTEMPTS
 from .conftest import signup, signup_customer
 
 
+def test_change_password_has_its_own_lockout(client):
+    token = signup(client, email="cp_ratelimited@example.com", password="correctpass123")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    for _ in range(MAX_ATTEMPTS):
+        res = client.post(
+            "/api/auth/change-password",
+            json={"current_password": "wrongpass", "new_password": "newpass456"},
+            headers=headers,
+        )
+        assert res.status_code == 400
+
+    locked_out = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "correctpass123", "new_password": "newpass456"},
+        headers=headers,
+    )
+    assert locked_out.status_code == 429
+
+
 def test_locks_out_after_max_failed_attempts(client):
     signup(client, email="ratelimited@example.com", password="correctpass123")
 

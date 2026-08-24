@@ -89,11 +89,12 @@ def create_review(
     db.refresh(review)
 
     instructor = db.query(models.Instructor).filter(models.Instructor.id == instructor_id).first()
-    send_email(
-        to=instructor.email,
-        subject=f"New {review.rating}-star review from {customer.name}",
-        body=review.comment or "(no comment left)",
-    )
+    if instructor.email_notifications:
+        send_email(
+            to=instructor.email,
+            subject=f"New {review.rating}-star review from {customer.name}",
+            body=review.comment or "(no comment left)",
+        )
     return review
 
 

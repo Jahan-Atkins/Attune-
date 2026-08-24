@@ -210,7 +210,8 @@ def _notify_session_scheduled(customer: models.Customer, instructor: models.Inst
     when = f"{DAY_NAMES[session.requested_day]}, {session.matched_start_time}–{session.matched_end_time}"
     body = f"Session {session.session_number} of {session.sessions_total} is scheduled for {when}."
     send_email(to=customer.email, subject="Next session scheduled", body=body)
-    send_email(to=instructor.email, subject=f"Next session scheduled with {customer.name}", body=body)
+    if instructor.email_notifications:
+        send_email(to=instructor.email, subject=f"Next session scheduled with {customer.name}", body=body)
 
 
 @router.post("/{lesson_request_id}/schedule-next", response_model=schemas.LessonRequestOut, status_code=201)

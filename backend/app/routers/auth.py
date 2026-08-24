@@ -17,6 +17,7 @@ from ..database import get_db
 from ..email import send_email
 from ..google_auth import verify_google_id_token
 from ..rate_limit import check_rate_limit, record_failed_attempt, reset_attempts
+from ..security import get_current_instructor
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -131,3 +132,28 @@ def reset_password(payload: schemas.ResetPasswordRequest, db: Session = Depends(
     db.delete(reset_token)
     db.commit()
     return {"detail": "Password updated — you can now log in."}
+
+
+@router.post("/change-password")
+def change_password(
+    payload: schemas.ChangePasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    instructor: models.Instructor = Depends(get_current_instructor),
+):
+    """The logged-in "Change Password" settings flow — distinct from
+    forgot/reset-password above, which are for someone who's locked out
+    entirely. Rate-limited by instructor id (not email/IP, since this
+    route already requires a valid token) for the same reason every
+    other password check here is: an attacker who's stolen a session
+    token shouldn't get unlimited guesses at the real password."""
+    check_rate_limit("change-password", request, str(instructor.id))
+    if not instructor.hashed_password:
+        raise HTTPException(status_code=400, detail="This account signed in with Google and has no password to change.")
+    if not security.verify_password(payload.current_password, instructor.hashed_password):
+        record_failed_attempt("change-password", request, str(instructor.id))
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    reset_attempts("change-password", request, str(instructor.id))
+    instructor.hashed_password = security.hash_password(payload.new_password)
+    db.commit()
+    return {"detail": "Password updated."}

@@ -40,6 +40,13 @@ class Instructor(Base):
     certifications = Column(String, default="")  # comma-separated for simplicity
     specialty = Column(String, default="yoga")  # comma-separated: "yoga", "sound_bath", or both
     active = Column(Boolean, default=True)
+    # Same "self-controlled, defaults on" shape as `active` — a single
+    # on/off switch, not per-notification-type granularity, matching this
+    # app's general preference for the simplest thing that actually works.
+    # Checked before every send_email() call that targets this instructor
+    # (new match, review, recurring-series change, client-deletion
+    # decision) — never before one that targets a customer.
+    email_notifications = Column(Boolean, default=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     # What the instructor actually typed on their profile form, geocoded

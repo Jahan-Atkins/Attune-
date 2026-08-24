@@ -121,6 +121,14 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=8)
 
 
+class ChangePasswordRequest(BaseModel):
+    """The logged-in-and-already-know-your-password flow — distinct from
+    ForgotPasswordRequest/ResetPasswordRequest, which are for someone who
+    can't log in at all. See auth.py's change_password."""
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+
 class GoogleAuthRequest(BaseModel):
     id_token: str  # the credential Google Identity Services hands the browser
 
@@ -143,6 +151,7 @@ class ProfileOut(BaseModel):
     certifications: str
     specialty: str
     active: bool
+    email_notifications: bool = True
     city: Optional[str] = None  # combined "City, ST" display string — see models.Instructor.city
     city_name: Optional[str] = None  # raw, for pre-filling the profile edit form's separate city/state inputs
     state_name: Optional[str] = None
@@ -160,6 +169,7 @@ class ProfileUpdate(BaseModel):
     certifications: Optional[str] = None
     specialty: Optional[str] = None
     active: Optional[bool] = None
+    email_notifications: Optional[bool] = None
     city_name: Optional[str] = None  # geocoded together via geo.geocode_address() — send both or neither
     state_name: Optional[str] = None
     max_travel_distance_km: Optional[float] = None  # null = no limit

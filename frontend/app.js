@@ -1269,6 +1269,77 @@ async function toggleActiveProfile() {
 }
 
 /* =========================================================
+   NOTIFICATION SETTINGS
+   A single on/off switch, not per-notification-type granularity — same
+   shape as the Active Profile toggle above, just reached through its
+   own modal instead of a home-screen row.
+   ========================================================= */
+function openNotificationSettingsModal() {
+  const p = profileCache || {};
+  const body = `
+    <div class="list-row" style="cursor:default;">
+      <span>Email me about new matches, reviews, and account updates</span>
+      <div class="toggle ${p.email_notifications !== false ? 'on' : ''}" id="notif-toggle" onclick="toggleEmailNotifications()"></div>
+    </div>`;
+  openModal('Notification Settings', body);
+}
+
+async function toggleEmailNotifications() {
+  const toggle = document.getElementById('notif-toggle');
+  const newState = !toggle.classList.contains('on');
+  toggle.classList.toggle('on', newState);
+  try {
+    await apiFetch('/api/profile', { method: 'PUT', body: JSON.stringify({ email_notifications: newState }) });
+    if (profileCache) profileCache.email_notifications = newState;
+  } catch (err) {
+    toggle.classList.toggle('on', !newState);
+    alert(err.message || 'Could not update notification settings.');
+  }
+}
+
+/* =========================================================
+   CHANGE PASSWORD
+   Distinct from the Forgot Password flow (auth screen, logged out) —
+   this is for someone already logged in who knows their current
+   password and wants to set a new one.
+   ========================================================= */
+function openChangePasswordModal() {
+  const body = `
+    <form id="change-password-form" onsubmit="submitChangePasswordForm(event)">
+      <label class="field-label">Current password</label>
+      <input class="field-input" type="password" id="cp-current" required>
+      <label class="field-label">New password</label>
+      <input class="field-input" type="password" id="cp-new" required minlength="8">
+      <div id="cp-error" class="form-error" style="display:none; margin-top:12px;"></div>
+      <div id="cp-success" style="display:none; margin-top:12px; color:var(--sage-dark, #4a6a5a);">Password updated.</div>
+      <button class="pill pill-solid pill-block" type="submit" style="margin-top:16px;">Update Password</button>
+    </form>`;
+  openModal('Change Password', body);
+}
+
+async function submitChangePasswordForm(evt) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('cp-error');
+  const successEl = document.getElementById('cp-success');
+  errorEl.style.display = 'none';
+  successEl.style.display = 'none';
+  try {
+    await apiFetch('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        current_password: document.getElementById('cp-current').value,
+        new_password: document.getElementById('cp-new').value,
+      }),
+    });
+    document.getElementById('change-password-form').reset();
+    successEl.style.display = 'block';
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not update password.';
+    errorEl.style.display = 'block';
+  }
+}
+
+/* =========================================================
    AVAILABILITY (Session Preferences)
    ========================================================= */
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];

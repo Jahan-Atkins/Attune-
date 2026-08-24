@@ -104,6 +104,25 @@ def test_confirm_booking_notifies_both_sides(client, customer_auth_headers, caps
     assert "notify_booking@example.com" in out
 
 
+def test_confirm_booking_respects_instructor_notification_setting_off(client, customer_auth_headers, capsys):
+    instructor_token = signup_instructor_with_specialty(client, email="notify_off_booking@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    client.put("/api/profile", json={"email_notifications": False}, headers=instructor_headers)
+    booking_id = create_booking_row(city="New York, NY")
+
+    capsys.readouterr()
+    client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=instructor_headers)
+    out = capsys.readouterr().out
+
+    assert "to=customer@example.com" in out  # customer's own email is unaffected by the instructor's setting
+    # The instructor's *address* legitimately appears inside the customer's
+    # own email body (it's the shared contact info) — checking for the
+    # literal address would false-positive on that. "to=" pins it to
+    # whether an email was actually *sent to* the instructor, not merely
+    # mentioned in one sent to someone else.
+    assert "to=notify_off_booking@example.com" not in out
+
+
 def test_confirm_lesson_request_notifies_both_sides(client, customer_auth_headers, capsys):
     instructor_token = signup_instructor_with_specialty(client, email="notify_schedule@example.com", specialty="yoga")
     instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
@@ -136,6 +155,24 @@ def test_new_review_notifies_instructor(client, customer_auth_headers, capsys):
     assert "Lovely session" in out
 
 
+def test_new_review_respects_instructor_notification_setting_off(client, customer_auth_headers, capsys):
+    instructor_token = signup_instructor_with_specialty(client, email="notify_off_review@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    booking_id = create_booking_row(city="New York, NY")
+    client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=instructor_headers)
+    client.put("/api/profile", json={"email_notifications": False}, headers=instructor_headers)
+
+    capsys.readouterr()
+    res = client.post(
+        "/api/customer/reviews", json={"booking_id": booking_id, "rating": 5, "comment": "Lovely session"},
+        headers=customer_auth_headers,
+    )
+    out = capsys.readouterr().out
+
+    assert res.status_code == 201  # the review itself still gets created
+    assert "to=notify_off_review@example.com" not in out
+
+
 def _matched_lesson_request(client, customer_auth_headers, instructor_headers):
     add_availability(client, instructor_headers, TUESDAY, "09:00", "11:00")
     lr = client.post("/api/customer/lesson-requests", json=_lesson_payload(), headers=customer_auth_headers).json()
@@ -160,6 +197,24 @@ def test_schedule_next_session_notifies_both_sides(client, customer_auth_headers
     assert "notify_schedule_next@example.com" in out
 
 
+def test_schedule_next_session_respects_instructor_notification_setting_off(client, customer_auth_headers, capsys):
+    instructor_token = signup_instructor_with_specialty(client, email="notify_off_schedule_next@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    add_availability(client, instructor_headers, TUESDAY, "08:00", "12:00")
+    root = client.post(
+        "/api/customer/lesson-requests", json=_lesson_payload(package="pack4"), headers=customer_auth_headers,
+    ).json()
+    client.put(f"/api/client-requests/lesson-requests/{root['id']}/confirm", headers=instructor_headers)
+    client.put("/api/profile", json={"email_notifications": False}, headers=instructor_headers)
+
+    capsys.readouterr()
+    client.post(f"/api/customer/lesson-requests/{root['id']}/schedule-next", json={}, headers=customer_auth_headers)
+    out = capsys.readouterr().out
+
+    assert "customer@example.com" in out
+    assert "to=notify_off_schedule_next@example.com" not in out
+
+
 def test_recurring_series_created_notifies_both_sides(client, customer_auth_headers, capsys):
     instructor_token = signup_instructor_with_specialty(client, email="notify_series_create@example.com", specialty="yoga")
     instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
@@ -172,6 +227,20 @@ def test_recurring_series_created_notifies_both_sides(client, customer_auth_head
     assert "customer@example.com" in out
     assert "notify_series_create@example.com" in out
     assert "created" in out
+
+
+def test_recurring_series_created_respects_instructor_notification_setting_off(client, customer_auth_headers, capsys):
+    instructor_token = signup_instructor_with_specialty(client, email="notify_off_series@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    lr_id = _matched_lesson_request(client, customer_auth_headers, instructor_headers)
+    client.put("/api/profile", json={"email_notifications": False}, headers=instructor_headers)
+
+    capsys.readouterr()
+    client.post("/api/customer/recurring-series", json={"lesson_request_id": lr_id}, headers=customer_auth_headers)
+    out = capsys.readouterr().out
+
+    assert "customer@example.com" in out
+    assert "to=notify_off_series@example.com" not in out
 
 
 def test_recurring_series_paused_and_cancelled_notify_both_sides(client, customer_auth_headers, capsys):
@@ -218,6 +287,21 @@ def test_approving_client_deletion_notifies_instructor(client, auth_headers, cap
     assert "instructor@example.com" in out
     assert "approved" in out
     assert "Rosa Klein" in out
+
+
+def test_approving_client_deletion_respects_instructor_notification_setting_off(client, auth_headers, capsys):
+    admin_token = create_admin_and_login(client, email="notify_off_admin_approve@example.com")
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    client.put("/api/profile", json={"email_notifications": False}, headers=auth_headers)
+    client_res = client.post("/api/clients", json={"name": "Rosa Klein", "initials": "RK"}, headers=auth_headers)
+    request_id = client.delete(f"/api/clients/{client_res.json()['id']}", headers=auth_headers).json()["id"]
+
+    capsys.readouterr()
+    res = client.put(f"/api/admin/client-deletion-requests/{request_id}/approve", headers=admin_headers)
+    out = capsys.readouterr().out
+
+    assert res.status_code == 200  # the deletion itself still goes through
+    assert "to=instructor@example.com" not in out
 
 
 def test_denying_client_deletion_notifies_instructor(client, auth_headers, capsys):
