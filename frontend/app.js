@@ -317,17 +317,41 @@ function clientCardHTML(c) {
     </div>`;
 }
 
+let clientSortAsc = true;
+
+function toggleClientSort() {
+  clientSortAsc = !clientSortAsc;
+  const active = document.querySelector('#screen-clients .subtab.active').dataset.subtab;
+  loadClients(active);
+}
+
+function toggleClientSearch() {
+  const input = document.getElementById('clients-search-input');
+  const showing = input.style.display !== 'none';
+  input.style.display = showing ? 'none' : 'block';
+  if (showing) { input.value = ''; filterClients(); } else { input.focus(); }
+}
+
+function filterClients() {
+  const q = document.getElementById('clients-search-input').value.trim().toLowerCase();
+  document.querySelectorAll('#screen-clients .client-card').forEach(card => {
+    card.style.display = card.querySelector('.client-name').textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
 async function loadClients(status) {
   const listEl = document.getElementById(`clients-${status}-list`);
   const emptyEl = document.getElementById(`clients-${status}-empty`);
   try {
     const data = await apiFetch(`/api/clients?status=${status}`);
+    data.sort((a, b) => clientSortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
     if (data.length === 0) {
       listEl.innerHTML = '';
       emptyEl.style.display = 'block';
     } else {
       listEl.innerHTML = data.map(clientCardHTML).join('');
       emptyEl.style.display = 'none';
+      filterClients(); // keep an active search applied across a re-sort/re-load
     }
   } catch (err) {
     listEl.innerHTML = '';
@@ -1444,10 +1468,18 @@ async function loadFaqs(category) {
     listEl.innerHTML = data.length
       ? data.map(f => `<div class="faq-card">${escapeHtml(f.question)}</div>`).join('')
       : `<p class="empty-copy" style="margin-top:30px;">No FAQs in this category yet.</p>`;
+    filterFaqs(); // keep an active search applied across a category switch
   } catch (err) {
     listEl.innerHTML = `<p class="empty-copy" style="margin-top:30px;">Couldn't load FAQs. Is the backend running?</p>`;
     console.error('Failed to load FAQs:', err);
   }
+}
+
+function filterFaqs() {
+  const q = document.getElementById('faq-search-input').value.trim().toLowerCase();
+  document.querySelectorAll('#faq-list .faq-card').forEach(card => {
+    card.style.display = card.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
 }
 
 function setFaqCategory(el, category) {

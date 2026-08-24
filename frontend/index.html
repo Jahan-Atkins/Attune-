@@ -167,10 +167,11 @@
         <button class="icon-btn" onclick="goToScreen('home')" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M15 5 8 12l7 7"/></svg></button>
         <h1 class="topbar-title">My Practice</h1>
         <div class="topbar-actions">
-          <button class="icon-btn" aria-label="Sort"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14M8 5 4 9M8 5l4 4"/><path d="M16 19V5M16 19l4-4M16 19l-4-4"/></svg></button>
-          <button class="icon-btn" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="6"/><path d="M20 20l-5.5-5.5"/></svg></button>
+          <button class="icon-btn" aria-label="Sort" onclick="toggleClientSort()"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14M8 5 4 9M8 5l4 4"/><path d="M16 19V5M16 19l4-4M16 19l-4-4"/></svg></button>
+          <button class="icon-btn" aria-label="Search" onclick="toggleClientSearch()"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="6"/><path d="M20 20l-5.5-5.5"/></svg></button>
         </div>
       </div>
+      <input class="field-input" id="clients-search-input" placeholder="Search clients" style="display:none; margin:12px 20px 0;" oninput="filterClients()">
       <div class="subtabs">
         <button class="subtab active" data-subtab="current" onclick="setSubtab('clients','current')">Current</button>
         <button class="subtab" data-subtab="past" onclick="setSubtab('clients','past')">Past</button>
@@ -184,7 +185,7 @@
             <p class="empty-copy">No current clients yet.</p>
           </div>
           <div class="divider"></div>
-          <button class="pill pill-solid pill-block" style="width:100%;">Request More Clients</button>
+          <button class="pill pill-solid pill-block" style="width:100%;" onclick="goToScreen('availability')">Request More Clients</button>
         </div>
 
         <div class="subtab-panel" data-panel="past">
@@ -424,13 +425,13 @@
           <button class="chip" onclick="setFaqCategory(this,'payments')">Payments</button>
           <button class="chip" onclick="setFaqCategory(this,'cancellations')">Cancellations</button>
         </div>
-        <div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="6"/><path d="M20 20l-5.5-5.5"/></svg>Search</div>
+        <div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="6"/><path d="M20 20l-5.5-5.5"/></svg><input id="faq-search-input" oninput="filterFaqs()" placeholder="Search" style="border:none; outline:none; background:transparent; font:inherit; color:inherit; width:100%;"></div>
         <div id="faq-list"></div>
       </div>
 
       <div class="learn-panel" id="learn-contact">
         <p class="empty-copy" style="margin:20px auto 18px;">Need a hand? Our support team is here every day, 8am–8pm.</p>
-        <button class="pill pill-solid pill-block">Email Support</button>
+        <button class="pill pill-solid pill-block" onclick="location.href='mailto:support@attune.app'">Email Support</button>
       </div>
     </section>
 
