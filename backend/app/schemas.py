@@ -354,9 +354,16 @@ class ReviewCreate(BaseModel):
     comment: Optional[str] = None
 
 
+class ReviewUpdate(BaseModel):
+    rating: Optional[int] = None  # 1-5, same validation as ReviewCreate
+    comment: Optional[str] = None
+
+
 class ReviewOut(BaseModel):
     id: int
     instructor_id: int
+    booking_id: Optional[int] = None
+    lesson_request_id: Optional[int] = None
     rating: int
     comment: Optional[str] = None
     created_at: datetime
