@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from . import geo, google_auth, models, schemas
 from .database import engine, get_db
 from .security import get_current_instructor
-from .routers import auth, clients, sessions, profile, faqs, customer_auth, bookings, availability, lesson_requests, client_requests, reviews, recurring_series, admin_auth, admin, reports, blocks
+from .routers import auth, clients, sessions, profile, faqs, customer_auth, customer_profile, bookings, availability, lesson_requests, client_requests, reviews, recurring_series, admin_auth, admin, reports, blocks
 
 # Creates all tables defined in models.py if they don't exist yet.
 # Once you're using Alembic day to day (see backend/alembic/), this
@@ -72,6 +72,7 @@ app.include_router(sessions.router)
 app.include_router(profile.router)
 app.include_router(faqs.router)
 app.include_router(customer_auth.router)
+app.include_router(customer_profile.router)
 app.include_router(bookings.router)
 app.include_router(availability.router)
 app.include_router(lesson_requests.router)

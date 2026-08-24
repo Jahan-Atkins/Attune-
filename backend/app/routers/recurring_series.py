@@ -80,11 +80,12 @@ def _notify_series(db: Session, series: models.RecurringSeries, event: str) -> N
     instructor = db.query(models.Instructor).filter(models.Instructor.id == series.instructor_id).first()
     day_label = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][series.day_of_week]
     detail = f"Every {day_label}, {series.start_time}–{series.end_time}"
-    send_email(
-        to=customer.email,
-        subject=f"Standing weekly booking {event}",
-        body=f"Your recurring booking ({detail}) with {instructor.name} was {event}.",
-    )
+    if customer.email_notifications:
+        send_email(
+            to=customer.email,
+            subject=f"Standing weekly booking {event}",
+            body=f"Your recurring booking ({detail}) with {instructor.name} was {event}.",
+        )
     if instructor.email_notifications:
         send_email(
             to=instructor.email,

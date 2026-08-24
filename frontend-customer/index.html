@@ -24,6 +24,7 @@
   <a class="wordmark" href="#" onclick="goHome(); return false;">Attune</a>
   <div id="nav-actions">
     <button class="nav-link" onclick="showAuth('login')" id="nav-login-btn">Log In</button>
+    <button class="nav-link" onclick="openProfileScreen()" id="nav-profile-btn" style="display:none;">Account</button>
     <button class="nav-link" onclick="logout()" id="nav-logout-btn" style="display:none;">Log Out</button>
   </div>
 </header>
@@ -269,6 +270,52 @@
     <h2 class="step-title">Recurring bookings</h2>
     <div id="recurring-list" style="max-width:480px; margin:0 auto;"></div>
     <p class="card-sub" id="recurring-empty" style="display:none;">No standing bookings yet. Make one from a past matched lesson.</p>
+  </section>
+
+  <!-- ============ ACCOUNT / PROFILE ============ -->
+  <section class="screen" id="screen-profile">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goHome()">← Back</button>
+      <p class="step-label">Account</p>
+    </div>
+    <div class="card wizard-card">
+      <h2 class="card-title">Your Account</h2>
+      <div id="profile-error" class="form-error" style="display:none;"></div>
+      <div id="profile-success" style="display:none; margin-top:8px; color:var(--sage-dark, #4a6a5a);"></div>
+      <form id="profile-form" onsubmit="submitProfileForm(event)">
+        <label class="field-label">Name</label>
+        <input class="field-input" type="text" id="profile-name" required>
+        <label class="field-label">Phone</label>
+        <input class="field-input" type="tel" id="profile-phone">
+        <label class="field-label">Email</label>
+        <input class="field-input" type="email" id="profile-email" disabled>
+        <label style="display:flex; align-items:center; gap:8px; font-size:14px; margin-top:18px; cursor:pointer;">
+          <input type="checkbox" id="profile-email-notifications"> Email me about match updates and booking activity
+        </label>
+        <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;">Save Changes</button>
+      </form>
+    </div>
+
+    <div class="card wizard-card" id="profile-password-card" style="margin-top:16px;">
+      <h2 class="card-title">Change Password</h2>
+      <div id="profile-password-error" class="form-error" style="display:none;"></div>
+      <div id="profile-password-success" style="display:none; margin-top:8px; color:var(--sage-dark, #4a6a5a);"></div>
+      <form id="profile-password-form" onsubmit="submitProfilePasswordForm(event)">
+        <label class="field-label">Current password</label>
+        <input class="field-input" type="password" id="profile-current-password" required>
+        <label class="field-label">New password</label>
+        <input class="field-input" type="password" id="profile-new-password" required>
+        <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;">Update Password</button>
+      </form>
+    </div>
+    <p class="card-sub" id="profile-google-only-note" style="display:none; max-width:480px; margin:16px auto 0;">This account signed in with Google and has no password to change.</p>
+
+    <div class="card wizard-card" style="margin-top:16px;">
+      <h2 class="card-title">Delete Account</h2>
+      <p class="card-sub">This permanently deletes your account and all of your booking history. This can't be undone.</p>
+      <div id="profile-delete-error" class="form-error" style="display:none;"></div>
+      <button class="btn btn-outline btn-block" style="margin-top:12px;" onclick="deleteAccount()">Delete My Account</button>
+    </div>
   </section>
 
 </main>
