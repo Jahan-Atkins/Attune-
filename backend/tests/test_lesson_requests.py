@@ -114,6 +114,20 @@ def test_lesson_request_stores_notes(client, customer_auth_headers):
     assert res.json()["notes"] == "First time doing a sound bath, a little nervous!"
 
 
+def test_lesson_request_stores_lessons_per_week(client, customer_auth_headers):
+    res = client.post(
+        "/api/customer/lesson-requests",
+        json=_request_payload(lessons_per_week=3),
+        headers=customer_auth_headers,
+    )
+    assert res.json()["lessons_per_week"] == 3
+
+
+def test_lesson_request_lessons_per_week_defaults_to_none(client, customer_auth_headers):
+    res = client.post("/api/customer/lesson-requests", json=_request_payload(), headers=customer_auth_headers)
+    assert res.json()["lessons_per_week"] is None
+
+
 def test_lesson_request_starts_pending_when_a_feasible_instructor_exists(client, customer_auth_headers):
     token = signup_instructor_with_specialty(client, email="feasible@example.com", specialty="yoga")
     headers = {"Authorization": f"Bearer {token}"}

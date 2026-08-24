@@ -94,6 +94,7 @@ def _booking_out(instructor: models.Instructor, booking: models.Booking) -> sche
     return schemas.ClientRequestOut(
         id=booking.id,
         request_type="package",
+        source="booking",
         specialty=booking.specialty,
         package=booking.package,
         sessions_total=booking.sessions_total,
@@ -121,10 +122,12 @@ def _lesson_request_out(instructor: models.Instructor, lesson_request: models.Le
     return schemas.ClientRequestOut(
         id=lesson_request.id,
         request_type="package" if lesson_request.package else "schedule",
+        source="lesson_request",
         specialty=lesson_request.specialty,
         package=lesson_request.package,
         sessions_total=lesson_request.sessions_total,
         duration_minutes=lesson_request.duration_minutes,
+        lessons_per_week=lesson_request.lessons_per_week,
         amount_due=lesson_request.amount_paid,
         customer_name=lesson_request.customer.name,
         customer_city=lesson_request.customer.city,
@@ -189,6 +192,7 @@ def _create_client_from_lesson_request(db: Session, instructor: models.Instructo
         next_session=next_session,
         sessions_completed=0,
         sessions_total=lesson_request.sessions_total,
+        lessons_per_week=lesson_request.lessons_per_week,
         amount_paid=lesson_request.amount_paid,
         amount_total=lesson_request.amount_paid,
     ))

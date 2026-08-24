@@ -366,6 +366,11 @@ class LessonRequest(Base):
     sessions_total = Column(Integer, nullable=False, default=1, server_default="1")
     session_number = Column(Integer, nullable=False, default=1, server_default="1")  # 1 = broadcast/matched root; 2..N = later package sessions
     package_request_id = Column(Integer, ForeignKey("lesson_requests.id"), nullable=True)  # set only when session_number >= 2
+    # A stated preference, not an enforced constraint — same "just a
+    # number, nothing validates against it" role as Client.lessons_per_week
+    # already plays elsewhere in this app. Copied onto the new Client at
+    # confirm time (see client_requests.py's _create_client_from_lesson_request).
+    lessons_per_week = Column(Integer, nullable=True)
 
     # The window that actually matched — NULL while pending on a
     # multi-window request. See the class docstring.

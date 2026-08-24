@@ -65,6 +65,7 @@ def test_pending_booking_visible_to_matching_instructor(client, customer_auth_he
     body = res.json()
     assert len(body) == 1
     assert body[0]["request_type"] == "package"
+    assert body[0]["source"] == "booking"
     assert body[0]["specialty"] == "yoga"
     assert body[0]["package"] == "single"
     assert body[0]["amount_due"] == 65
@@ -168,8 +169,11 @@ def test_pending_lesson_request_visible_when_overlap_exists(client, customer_aut
     body = client.get("/api/client-requests", headers=headers).json()
     assert len(body) == 1
     # Every new request carries a package now (see models.LessonRequest's
-    # docstring) — request_type reflects that, not a separate "schedule" kind.
+    # docstring) — request_type reflects that, not a separate "schedule" kind,
+    # so it's `source`, not `request_type`, that the frontend must use to
+    # pick which confirm route (lesson-requests vs bookings) to call.
     assert body[0]["request_type"] == "package"
+    assert body[0]["source"] == "lesson_request"
     assert body[0]["requested_day"] == TUESDAY
     assert body[0]["duration_minutes"] == 30
 
@@ -227,6 +231,20 @@ def test_confirm_lesson_request_creates_client_with_next_session(client, custome
     assert len(matched) == 1
     assert matched[0]["next_session"] == "Tuesday, 09:00"
     assert matched[0]["sessions_total"] == 1
+
+
+def test_confirm_lesson_request_copies_lessons_per_week_to_client(client, customer_auth_headers):
+    headers = _make_instructor(client, "sched_lpw@example.com", specialty="yoga", availability=[(TUESDAY, "08:00", "12:00")])
+    res = client.post(
+        "/api/customer/lesson-requests", json=_lesson_payload(lessons_per_week=2), headers=customer_auth_headers
+    )
+    lesson_request_id = res.json()["id"]
+
+    client.put(f"/api/client-requests/lesson-requests/{lesson_request_id}/confirm", headers=headers)
+
+    their_clients = client.get("/api/clients?status=current", headers=headers).json()
+    matched = [c for c in their_clients if c["name"] == "Test Customer"]
+    assert matched[0]["lessons_per_week"] == 2
 
 
 def test_confirm_lesson_request_already_claimed_returns_404(client, customer_auth_headers):

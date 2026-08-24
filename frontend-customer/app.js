@@ -32,14 +32,20 @@ let selectedPackage = null;
 let packageCatalog = {};
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+// 2-hour windows spanning 6am-10pm.
 const TIME_WINDOWS = [
-  { label: '9–11am', start: '09:00', end: '11:00' },
-  { label: '11am–1pm', start: '11:00', end: '13:00' },
-  { label: '1–3pm', start: '13:00', end: '15:00' },
-  { label: '3–5pm', start: '15:00', end: '17:00' },
+  { label: '6–8am', start: '06:00', end: '08:00' },
+  { label: '8–10am', start: '08:00', end: '10:00' },
+  { label: '10am–12pm', start: '10:00', end: '12:00' },
+  { label: '12–2pm', start: '12:00', end: '14:00' },
+  { label: '2–4pm', start: '14:00', end: '16:00' },
+  { label: '4–6pm', start: '16:00', end: '18:00' },
+  { label: '6–8pm', start: '18:00', end: '20:00' },
+  { label: '8–10pm', start: '20:00', end: '22:00' },
 ];
 let selectedWindows = []; // [{day_of_week, start_time, end_time}, ...] — built up on the availability screen
 let selectedDuration = null;
+let selectedLessonsPerWeek = null; // a stated preference, not enforced — see models.LessonRequest
 let citiesCache = [];
 let durationCatalog = {};
 let lastRequestType = null; // 'package' | 'schedule' — which /me endpoint checkLatestStatus() re-polls
@@ -282,6 +288,8 @@ async function loadDurations() {
 async function initAvailabilityStep() {
   selectedWindows = [];
   selectedDuration = null;
+  stagedAvailDays = new Set();
+  stagedAvailWindows = new Set();
 
   const durations = await loadDurations();
   const durationEl = document.getElementById('avail-duration-picker');
@@ -291,51 +299,75 @@ async function initAvailabilityStep() {
 
   const dayEl = document.getElementById('avail-day-picker');
   dayEl.innerHTML = DAY_NAMES.map((name, i) =>
-    `<button type="button" class="day-btn" data-day="${i}" onclick="selectAvailDay(${i})">${name.slice(0, 3)}</button>`
+    `<button type="button" class="day-btn" data-day="${i}" onclick="toggleAvailDay(${i})">${name.slice(0, 3)}</button>`
   ).join('');
 
   const windowEl = document.getElementById('avail-window-picker');
   windowEl.innerHTML = TIME_WINDOWS.map((w, i) =>
-    `<button type="button" class="window-btn" data-window="${i}" onclick="selectAvailWindow(${i})">${w.label}</button>`
+    `<button type="button" class="window-btn" data-window="${i}" onclick="toggleAvailWindow(${i})">${w.label}</button>`
   ).join('');
 
+  updateAddWindowsButton();
   renderAvailabilityWindowList();
+  document.getElementById('avail-lessons-per-week').value = '';
 
   const cities = await loadCities();
   const cityEl = document.getElementById('avail-city');
   cityEl.innerHTML = cities.map(c => `<option value="${c}">${c}</option>`).join('');
 }
 
-let stagedAvailDay = null;
-let stagedAvailWindow = null;
+// Multi-select: any number of days and any number of time windows can be
+// staged at once. "+ Add" then adds the full cross product (every staged
+// day paired with every staged window) to selectedWindows in one click.
+let stagedAvailDays = new Set();
+let stagedAvailWindows = new Set();
 
 function selectAvailDuration(minutes) {
   selectedDuration = minutes;
   document.querySelectorAll('#avail-duration-picker .window-btn').forEach(b => b.classList.toggle('selected', Number(b.dataset.duration) === minutes));
 }
 
-function selectAvailDay(day) {
-  stagedAvailDay = day;
-  document.querySelectorAll('#avail-day-picker .day-btn').forEach(b => b.classList.toggle('selected', Number(b.dataset.day) === day));
+function toggleAvailDay(day) {
+  if (stagedAvailDays.has(day)) stagedAvailDays.delete(day); else stagedAvailDays.add(day);
+  document.querySelectorAll('#avail-day-picker .day-btn').forEach(b => b.classList.toggle('selected', stagedAvailDays.has(Number(b.dataset.day))));
+  updateAddWindowsButton();
 }
 
-function selectAvailWindow(index) {
-  stagedAvailWindow = TIME_WINDOWS[index];
-  document.querySelectorAll('#avail-window-picker .window-btn').forEach((b, i) => b.classList.toggle('selected', i === index));
+function toggleAvailWindow(index) {
+  if (stagedAvailWindows.has(index)) stagedAvailWindows.delete(index); else stagedAvailWindows.add(index);
+  document.querySelectorAll('#avail-window-picker .window-btn').forEach((b, i) => b.classList.toggle('selected', stagedAvailWindows.has(i)));
+  updateAddWindowsButton();
+}
+
+function updateAddWindowsButton() {
+  const count = stagedAvailDays.size * stagedAvailWindows.size;
+  const btn = document.getElementById('avail-add-btn');
+  btn.textContent = count > 0 ? `+ Add ${count} Window${count > 1 ? 's' : ''}` : '+ Add Selected Windows';
+  btn.disabled = count === 0;
 }
 
 function addAvailabilityWindow() {
   const errorEl = document.getElementById('avail-error');
   errorEl.style.display = 'none';
-  if (stagedAvailDay === null || !stagedAvailWindow) {
-    errorEl.textContent = 'Pick a day and a time window to add.';
+  if (stagedAvailDays.size === 0 || stagedAvailWindows.size === 0) {
+    errorEl.textContent = 'Pick at least one day and one time window to add.';
     errorEl.style.display = 'block';
     return;
   }
-  selectedWindows.push({ day_of_week: stagedAvailDay, start_time: stagedAvailWindow.start, end_time: stagedAvailWindow.end, _label: `${DAY_NAMES[stagedAvailDay].slice(0, 3)}, ${stagedAvailWindow.label}` });
-  stagedAvailDay = null;
-  stagedAvailWindow = null;
+  const existing = new Set(selectedWindows.map(w => `${w.day_of_week}-${w.start_time}`));
+  for (const day of stagedAvailDays) {
+    for (const windowIndex of stagedAvailWindows) {
+      const w = TIME_WINDOWS[windowIndex];
+      const key = `${day}-${w.start}`;
+      if (existing.has(key)) continue; // already added, skip the duplicate
+      existing.add(key);
+      selectedWindows.push({ day_of_week: day, start_time: w.start, end_time: w.end, _label: `${DAY_NAMES[day].slice(0, 3)}, ${w.label}` });
+    }
+  }
+  stagedAvailDays = new Set();
+  stagedAvailWindows = new Set();
   document.querySelectorAll('#avail-day-picker .day-btn, #avail-window-picker .window-btn').forEach(b => b.classList.remove('selected'));
+  updateAddWindowsButton();
   renderAvailabilityWindowList();
 }
 
@@ -364,12 +396,16 @@ function submitAvailabilitySelection() {
     errorEl.style.display = 'block';
     return;
   }
+  const lessonsPerWeekRaw = document.getElementById('avail-lessons-per-week').value;
+  selectedLessonsPerWeek = lessonsPerWeekRaw ? Number(lessonsPerWeekRaw) : null;
+
   const info = packageCatalog[selectedPackage];
   const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
   const rebookNote = preferredInstructorId ? ` · Booking again with ${preferredInstructorName}` : '';
+  const lessonsPerWeekNote = selectedLessonsPerWeek ? ` · ${selectedLessonsPerWeek}/week` : '';
   const price = estimatedPackagePrice(selectedPackage, selectedDuration);
   document.getElementById('payment-summary').textContent =
-    `${specialtyLabel} · ${info.sessions} session${info.sessions > 1 ? 's' : ''} · ${selectedDuration} min · ${selectedWindows.length} window${selectedWindows.length > 1 ? 's' : ''} submitted · $${price}${rebookNote}`;
+    `${specialtyLabel} · ${info.sessions} session${info.sessions > 1 ? 's' : ''} · ${selectedDuration} min · ${selectedWindows.length} window${selectedWindows.length > 1 ? 's' : ''} submitted${lessonsPerWeekNote} · $${price}${rebookNote}`;
   goToScreen('payment');
 }
 
@@ -398,6 +434,7 @@ async function submitPayment(evt) {
     city: document.getElementById('avail-city').value,
     duration_minutes: selectedDuration,
     availability_windows: selectedWindows.map(w => ({ day_of_week: w.day_of_week, start_time: w.start_time, end_time: w.end_time })),
+    lessons_per_week: selectedLessonsPerWeek,
     notes: document.getElementById('pay-notes').value.trim() || null,
     preferred_instructor_id: preferredInstructorId,
     card_name: document.getElementById('pay-name').value.trim(),
@@ -597,6 +634,8 @@ function toggleScheduleNextForm(key, rootId) {
     return;
   }
   scheduleNextWindows[key] = [];
+  stagedSNextDays[key] = new Set();
+  stagedSNextWindows[key] = new Set();
   el.style.display = 'block';
   el.innerHTML = `
     <label style="display:flex; align-items:center; gap:8px; font-size:14px; cursor:pointer;">
@@ -604,12 +643,12 @@ function toggleScheduleNextForm(key, rootId) {
     </label>
     <div id="snext-custom-${key}" style="display:none; margin-top:10px;">
       <div class="day-picker" id="snext-day-picker-${key}">
-        ${DAY_NAMES.map((name, i) => `<button type="button" class="day-btn" onclick="selectScheduleNextDay('${key}', ${i})" data-day="${i}">${name.slice(0, 3)}</button>`).join('')}
+        ${DAY_NAMES.map((name, i) => `<button type="button" class="day-btn" onclick="toggleScheduleNextDay('${key}', ${i})" data-day="${i}">${name.slice(0, 3)}</button>`).join('')}
       </div>
       <div class="window-grid" id="snext-window-picker-${key}" style="margin-top:10px;">
-        ${TIME_WINDOWS.map((w, i) => `<button type="button" class="window-btn" onclick="selectScheduleNextWindow('${key}', ${i})" data-window="${i}">${w.label}</button>`).join('')}
+        ${TIME_WINDOWS.map((w, i) => `<button type="button" class="window-btn" onclick="toggleScheduleNextWindow('${key}', ${i})" data-window="${i}">${w.label}</button>`).join('')}
       </div>
-      <button class="btn btn-outline btn-block" type="button" style="margin-top:10px;" onclick="addScheduleNextWindow('${key}')">+ Add This Window</button>
+      <button class="btn btn-outline btn-block" type="button" id="snext-add-btn-${key}" style="margin-top:10px;" onclick="addScheduleNextWindow('${key}')" disabled>+ Add Selected Windows</button>
       <div id="snext-window-list-${key}" style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;"></div>
     </div>
     <div id="snext-error-${key}" class="form-error" style="display:none; margin-top:8px;"></div>
@@ -621,31 +660,56 @@ function toggleScheduleNextCustomWindows(key) {
   document.getElementById(`snext-custom-${key}`).style.display = useOriginal ? 'none' : 'block';
 }
 
-let stagedSNextDay = {};
-let stagedSNextWindow = {};
+// Multi-select, same shape as the main availability screen's pickers —
+// see addAvailabilityWindow() above for the cross-product reasoning.
+let stagedSNextDays = {};
+let stagedSNextWindows = {};
 
-function selectScheduleNextDay(key, day) {
-  stagedSNextDay[key] = day;
-  document.querySelectorAll(`#snext-day-picker-${key} .day-btn`).forEach(b => b.classList.toggle('selected', Number(b.dataset.day) === day));
+function toggleScheduleNextDay(key, day) {
+  const set = stagedSNextDays[key];
+  if (set.has(day)) set.delete(day); else set.add(day);
+  document.querySelectorAll(`#snext-day-picker-${key} .day-btn`).forEach(b => b.classList.toggle('selected', set.has(Number(b.dataset.day))));
+  updateScheduleNextAddButton(key);
 }
 
-function selectScheduleNextWindow(key, index) {
-  stagedSNextWindow[key] = TIME_WINDOWS[index];
-  document.querySelectorAll(`#snext-window-picker-${key} .window-btn`).forEach((b, i) => b.classList.toggle('selected', i === index));
+function toggleScheduleNextWindow(key, index) {
+  const set = stagedSNextWindows[key];
+  if (set.has(index)) set.delete(index); else set.add(index);
+  document.querySelectorAll(`#snext-window-picker-${key} .window-btn`).forEach((b, i) => b.classList.toggle('selected', set.has(i)));
+  updateScheduleNextAddButton(key);
+}
+
+function updateScheduleNextAddButton(key) {
+  const count = stagedSNextDays[key].size * stagedSNextWindows[key].size;
+  const btn = document.getElementById(`snext-add-btn-${key}`);
+  btn.textContent = count > 0 ? `+ Add ${count} Window${count > 1 ? 's' : ''}` : '+ Add Selected Windows';
+  btn.disabled = count === 0;
 }
 
 function addScheduleNextWindow(key) {
   const errorEl = document.getElementById(`snext-error-${key}`);
   errorEl.style.display = 'none';
-  const day = stagedSNextDay[key];
-  const w = stagedSNextWindow[key];
-  if (day === undefined || !w) {
-    errorEl.textContent = 'Pick a day and a time window to add.';
+  const days = stagedSNextDays[key];
+  const windows = stagedSNextWindows[key];
+  if (days.size === 0 || windows.size === 0) {
+    errorEl.textContent = 'Pick at least one day and one time window to add.';
     errorEl.style.display = 'block';
     return;
   }
-  scheduleNextWindows[key].push({ day_of_week: day, start_time: w.start, end_time: w.end, _label: `${DAY_NAMES[day].slice(0, 3)}, ${w.label}` });
+  const existing = new Set(scheduleNextWindows[key].map(w => `${w.day_of_week}-${w.start_time}`));
+  for (const day of days) {
+    for (const windowIndex of windows) {
+      const w = TIME_WINDOWS[windowIndex];
+      const dedupeKey = `${day}-${w.start}`;
+      if (existing.has(dedupeKey)) continue;
+      existing.add(dedupeKey);
+      scheduleNextWindows[key].push({ day_of_week: day, start_time: w.start, end_time: w.end, _label: `${DAY_NAMES[day].slice(0, 3)}, ${w.label}` });
+    }
+  }
+  stagedSNextDays[key] = new Set();
+  stagedSNextWindows[key] = new Set();
   document.querySelectorAll(`#snext-day-picker-${key} .day-btn, #snext-window-picker-${key} .window-btn`).forEach(b => b.classList.remove('selected'));
+  updateScheduleNextAddButton(key);
   const listEl = document.getElementById(`snext-window-list-${key}`);
   listEl.innerHTML = scheduleNextWindows[key].map((win, i) =>
     `<span class="day-btn selected" style="cursor:pointer;" onclick="scheduleNextWindows['${key}'].splice(${i},1); document.getElementById('snext-window-list-${key}').children[${i}].remove();">${escapeHtml(win._label)} ✕</span>`

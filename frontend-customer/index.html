@@ -158,20 +158,22 @@
       <p class="step-label">Step 3 of 4</p>
     </div>
     <h2 class="step-title">When are you available?</h2>
-    <p class="card-sub" style="max-width:480px; margin:0 auto 18px;">Add every day/time window that works for you. We'll match you with an instructor who's free in at least one of them.</p>
+    <p class="card-sub" style="max-width:480px; margin:0 auto 18px;">Select every day and time window that works for you, then add them. We'll match you with an instructor who's free in at least one.</p>
 
     <p class="field-label" style="text-align:center;">Lesson length</p>
     <div class="window-grid" id="avail-duration-picker"></div>
 
-    <p class="field-label" style="text-align:center;">Day of week</p>
+    <p class="field-label" style="text-align:center;">Days of the week <span style="font-weight:400; text-transform:none; letter-spacing:0;">(pick as many as you like)</span></p>
     <div class="day-picker" id="avail-day-picker"></div>
 
-    <p class="field-label" style="text-align:center;">Time window</p>
+    <p class="field-label" style="text-align:center;">Time windows <span style="font-weight:400; text-transform:none; letter-spacing:0;">(pick as many as you like)</span></p>
     <div class="window-grid" id="avail-window-picker"></div>
 
     <div class="schedule-panel">
-      <button class="btn btn-outline btn-block" type="button" onclick="addAvailabilityWindow()">+ Add This Window</button>
+      <button class="btn btn-outline btn-block" type="button" id="avail-add-btn" onclick="addAvailabilityWindow()" disabled>+ Add Selected Windows</button>
       <div id="avail-window-list" style="margin-top:14px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+      <label class="field-label" style="margin-top:18px;">Lessons per week <span style="font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+      <input class="field-input" id="avail-lessons-per-week" type="number" min="1" placeholder="e.g. 2">
       <label class="field-label" style="margin-top:18px;">Your city</label>
       <select class="field-select" id="avail-city"></select>
       <div id="avail-error" class="form-error" style="display:none; margin-top:12px;"></div>

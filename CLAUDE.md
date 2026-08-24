@@ -251,6 +251,37 @@ Check the relevant one before assuming a feature doesn't exist yet.
   `estimatedPackagePrice()` mirrors this formula client-side so the
   customer sees the real total *before* paying, not just on the match
   screen after submitting — if the backend formula changes, update both.
+- **`ClientRequestOut.request_type` ("package"/"schedule") is not a proxy
+  for which underlying model (`Booking` vs `LessonRequest`) a row is —
+  use `.source` ("booking"/"lesson_request") for that instead.** Before
+  the package+availability merge, every real "schedule" request really
+  was a `LessonRequest` and every "package" request really was a
+  `Booking`, so `frontend/app.js`'s `clientRequestCardHTML` used
+  `request_type === 'schedule'` to pick the confirm route. Once package
+  selection became mandatory for every new request, `_lesson_request_out`
+  started returning `request_type="package"` for virtually all
+  `LessonRequest` rows too — silently routing every "Confirm Match" click
+  at a *new* request to the dead `/client-requests/bookings/{id}/confirm`
+  route (404, since no `Booking` with that id exists). Caught by manual
+  browser testing, not by the test suite — `test_pending_lesson_request_visible_when_overlap_exists`
+  in `test_client_requests.py` now asserts `source == "lesson_request"`
+  specifically to catch a regression here. If you add another place that
+  needs to know "which table does this row's id belong to," use `source`,
+  never `request_type`.
+- **A `LessonRequest` also carries an optional `lessons_per_week`** — a
+  stated preference, not an enforced constraint, same unvalidated-integer
+  role `Client.lessons_per_week`/`SessionListing.lessons_per_week` already
+  play elsewhere in this app. It's set at request-creation time, copied
+  onto the new `Client` at confirm time (`_create_client_from_lesson_request`),
+  and never checked against anything — don't add scheduling logic that
+  enforces it without an explicit ask. The availability step's day/window
+  pickers (main screen and the "Schedule Next Session" mini-picker) are
+  both multi-select: staged picks live in `Set`s, one "Add" computes the
+  full cross-product of staged days × staged windows and dedupes against
+  windows already added. `TIME_WINDOWS` (`frontend-customer/app.js`) is
+  eight 2-hour windows spanning 6am-10pm — if you change the windows,
+  update it in one place only; the mini-picker maps over the same
+  constant, it doesn't have its own copy.
 
 ## Commands
 
@@ -262,7 +293,7 @@ alembic upgrade head
 python seed.py           # see logins below
 python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 229 tests in backend/tests/ — run after any route change
+pytest                    # 232 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -348,17 +379,21 @@ the dropdown).
 ## Current status
 
 **Done:** instructor auth/CRUD/profile/FAQs, a unified customer request
-flow (specialty -> package -> multiple availability windows -> payment,
-one model — `LessonRequest` — going through a pending -> broadcast ->
-instructor-confirms lifecycle, not auto-matching; the old separate
-"package" vs. "schedule" fork and its `Booking`-create path are retired,
-see the non-negotiables above), multi-session packages scheduled one
-session at a time after the first match, instructor weekly availability
+flow (specialty -> package -> multiple availability windows (multi-select
+day/time pickers, 2-hour windows spanning 6am-10pm) + an optional
+lessons-per-week preference -> payment, one model — `LessonRequest` —
+going through a pending -> broadcast -> instructor-confirms lifecycle,
+not auto-matching; the old separate "package" vs. "schedule" fork and
+its `Booking`-create path are retired, see the non-negotiables above),
+multi-session packages scheduled one session at a time after the first
+match (including a "Schedule Next Session" mini-picker with the same
+multi-select behavior as the main flow), instructor weekly availability
 + a travel-distance preference, a fake demo-city location system,
 duration- and package-scaled pricing, a Client Requests map (Leaflet via
-CDN), Postgres + deployment (Render, live), Filter/Sort on Open
-Sessions, a full Client Details page (location, recurring availability,
-itemized lesson list), and all seven parts of
+CDN), Postgres + deployment (Render, live), a PWA (manifest + service
+worker) for both the instructor and customer frontends, Filter/Sort on
+Open Sessions, a full Client Details page (location, recurring
+availability, itemized lesson list), and all seven parts of
 `PLATFORM-EXPANSION-ROADMAP.md`: contact info exchange, booking history,
 reviews & ratings, rebooking the same instructor, recurring weekly
 bookings, email notifications, and a full admin side (`frontend-admin/`,
@@ -367,7 +402,7 @@ workflow (instructor requests, admin approves/denies), and three
 launch-readiness items: rate limiting on login/forgot-password,
 self-serve password reset for instructors and customers, and a
 reporting/blocking mechanism between matched instructors and customers.
-229 passing tests cover all of it. See
+232 passing tests cover all of it. See
 `SCHEDULING-ROADMAP.md`,
 `REQUEST-CONFIRM-ROADMAP.md`, `CLIENT-DETAILS-ROADMAP.md`, and
 `PLATFORM-EXPANSION-ROADMAP.md` for how each piece got built, and
@@ -380,9 +415,9 @@ the items `PLATFORM-EXPANSION-ROADMAP.md` Part 7 explicitly called out
 of scope (2FA for admin accounts, an audit log of admin actions,
 admin-initiated password resets).
 
-**Production migration pending:** local SQLite is fully migrated through
-`da39efd1e412` (admin role + suspension fields); production Postgres on
-Render still needs `61908be0a3e1` (rebooking), `eec36154bc48` (recurring
-bookings), and `da39efd1e412` applied — deploying will hit the
-create_all()-vs-migration race documented above, same as every prior
-deploy.
+**Production migration pending:** production Postgres on Render is at
+`a40d49d2c976` (the package+availability merge) — fully caught up except
+for the newest local migration, `0c48e670ce65` (adds
+`lesson_requests.lessons_per_week`, a single nullable column with no new
+table, so this one deploy won't hit the create_all()-vs-migration race
+described above).

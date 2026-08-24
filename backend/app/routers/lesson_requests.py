@@ -181,6 +181,7 @@ def create_lesson_request(
         package=payload.package,
         sessions_total=sessions_total,
         session_number=1,
+        lessons_per_week=payload.lessons_per_week,
         amount_paid=price,
         paid=False,
         notes=payload.notes,

@@ -978,11 +978,11 @@ let clientRequestsCache = [];
 
 function clientRequestCardHTML(r) {
   const specialtyLabel = r.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
-  const scheduleLine = r.request_type === 'schedule'
-    ? `${DAY_NAMES[r.requested_day]}, ${r.requested_start_time}–${r.requested_end_time} · ${r.duration_minutes} min lesson`
-    : `${r.package} package · ${r.sessions_total} session${r.sessions_total > 1 ? 's' : ''}`;
+  const scheduleLine = r.package
+    ? `${r.package} package · ${r.sessions_total} session${r.sessions_total > 1 ? 's' : ''}`
+    : `${DAY_NAMES[r.requested_day]}, ${r.requested_start_time}–${r.requested_end_time} · ${r.duration_minutes} min lesson`;
   const locationLine = [r.customer_city, r.distance_km != null ? `~${r.distance_km} km away` : null].filter(Boolean).join(' · ');
-  const confirmPath = r.request_type === 'schedule' ? 'lesson-requests' : 'bookings';
+  const confirmPath = r.source === 'lesson_request' ? 'lesson-requests' : 'bookings';
   return `
     <div class="client-card">
       <div class="client-row">

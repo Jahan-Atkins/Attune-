@@ -235,6 +235,7 @@ class LessonRequestCreate(BaseModel):
     city: str  # one of geo.DEMO_CITIES' names
     duration_minutes: int  # 30-90, 15-minute steps — see PACKAGE_DISCOUNT/DURATION_PRICING
     availability_windows: List[AvailabilityBlockBase]  # at least one — the candidate windows to match against
+    lessons_per_week: Optional[int] = None  # a stated preference, not enforced — see models.LessonRequest
     notes: Optional[str] = None  # anything extra for the instructor to see
     preferred_instructor_id: Optional[int] = None  # set by "Book Again"
     card_name: str
@@ -261,6 +262,7 @@ class LessonRequestOut(BaseModel):
     session_number: int = 1
     package_request_id: Optional[int] = None
     sessions_scheduled: Optional[int] = None
+    lessons_per_week: Optional[int] = None
     availability_windows: List[AvailabilityBlockOut] = []
     requested_day: Optional[int] = None
     requested_start_time: Optional[str] = None
@@ -287,10 +289,12 @@ class LessonRequestOut(BaseModel):
 class ClientRequestOut(BaseModel):
     id: int
     request_type: str  # "package" | "schedule"
+    source: str  # "booking" | "lesson_request" — which underlying model/confirm route this is
     specialty: str
     package: Optional[str] = None  # package requests only
     sessions_total: int
     duration_minutes: Optional[int] = None  # schedule requests only
+    lessons_per_week: Optional[int] = None
     amount_due: float
     customer_name: str
     customer_city: Optional[str] = None
