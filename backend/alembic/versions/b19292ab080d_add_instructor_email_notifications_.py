@@ -25,12 +25,18 @@ def upgrade() -> None:
     # customers.suspended / instructors.suspended / lesson_requests.paid
     # to nullable=True here — same recurring SQLite NOT NULL reflection
     # quirk as every prior migration in this repo, not real drift.
-    # Deliberately dropped. server_default='1' (not just the model's
-    # Python-level default=True) is required here so existing instructor
-    # rows get real notifications-on, not NULL — a NULL would evaluate
-    # falsy in every `if instructor.email_notifications:` guard, silently
-    # turning notifications off for everyone already using the app.
-    op.add_column('instructors', sa.Column('email_notifications', sa.Boolean(), nullable=False, server_default=sa.text('1')))
+    # Deliberately dropped. server_default=sa.true() (not just the
+    # model's Python-level default=True) is required here so existing
+    # instructor rows get real notifications-on, not NULL — a NULL would
+    # evaluate falsy in every `if instructor.email_notifications:` guard,
+    # silently turning notifications off for everyone already using the
+    # app. sa.true()/sa.false() are the portable SQLAlchemy constructs
+    # for this — a raw sa.text('1') works on SQLite but fails on Postgres
+    # ("column is of type boolean but default expression is of type
+    # integer"), caught the hard way applying this migration to
+    # production. da39efd1e412's `suspended` columns already established
+    # sa.false() as this repo's convention for the False case.
+    op.add_column('instructors', sa.Column('email_notifications', sa.Boolean(), nullable=False, server_default=sa.true()))
     # ### end Alembic commands ###
 
 
