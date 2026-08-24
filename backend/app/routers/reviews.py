@@ -109,3 +109,66 @@ def list_my_reviews(
         .order_by(models.Review.created_at.desc())
         .all()
     )
+
+
+@router.get("/api/customer/reviews", response_model=List[schemas.ReviewOut])
+def list_my_written_reviews(
+    db: Session = Depends(get_db),
+    customer: models.Customer = Depends(get_current_customer),
+):
+    return (
+        db.query(models.Review)
+        .filter(models.Review.customer_id == customer.id)
+        .order_by(models.Review.created_at.desc())
+        .all()
+    )
+
+
+@router.put("/api/customer/reviews/{review_id}", response_model=schemas.ReviewOut)
+def update_review(
+    review_id: int,
+    payload: schemas.ReviewUpdate,
+    db: Session = Depends(get_db),
+    customer: models.Customer = Depends(get_current_customer),
+):
+    review = (
+        db.query(models.Review)
+        .filter(models.Review.id == review_id, models.Review.customer_id == customer.id)
+        .first()
+    )
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found.")
+
+    if payload.rating is not None:
+        if not (1 <= payload.rating <= 5):
+            raise HTTPException(status_code=400, detail="Rating must be between 1 and 5.")
+        review.rating = payload.rating
+    if payload.comment is not None:
+        review.comment = payload.comment
+
+    # No re-notifying the instructor here — the "new review" email only
+    # makes sense once, at creation (see create_review above).
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+@router.delete("/api/customer/reviews/{review_id}", status_code=204)
+def delete_review(
+    review_id: int,
+    db: Session = Depends(get_db),
+    customer: models.Customer = Depends(get_current_customer),
+):
+    review = (
+        db.query(models.Review)
+        .filter(models.Review.id == review_id, models.Review.customer_id == customer.id)
+        .first()
+    )
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found.")
+
+    # Instructor.average_rating/review_count are computed live from this
+    # table (see models.Instructor), so deleting the row is all that's
+    # needed — nothing cached to update.
+    db.delete(review)
+    db.commit()

@@ -51,6 +51,7 @@ let lastRequestType = null; // 'package' | 'schedule' — which /me endpoint che
 let preferredInstructorId = null; // set by "Book Again with [Name]", sent as-is in the final submit payload
 let preferredInstructorName = null; // display-only echo of the above, never sent to the backend
 let blockedInstructorIds = new Set(); // populated by loadHistory(), read by historyCardHTML
+let reviewsByKey = {}; // populated by loadHistory(), keyed like historyCardHTML's `key` — read by historyCardHTML/toggleReviewForm
 
 function showAuth(mode) {
   authMode = mode;
@@ -484,12 +485,18 @@ async function loadHistory() {
   const listEl = document.getElementById('history-list');
   const emptyEl = document.getElementById('history-empty');
   try {
-    const [bookings, lessonRequests, blocked] = await Promise.all([
+    const [bookings, lessonRequests, blocked, reviews] = await Promise.all([
       apiFetch('/api/customer/bookings'),
       apiFetch('/api/customer/lesson-requests'),
       apiFetch('/api/customer/blocks'),
+      apiFetch('/api/customer/reviews'),
     ]);
     blockedInstructorIds = new Set(blocked.map(b => b.instructor_id));
+    reviewsByKey = {};
+    reviews.forEach(r => {
+      const key = r.booking_id != null ? `booking-${r.booking_id}` : `lesson-request-${r.lesson_request_id}`;
+      reviewsByKey[key] = r;
+    });
     const items = [
       ...bookings.map(b => ({ ...b, _type: 'booking' })),
       ...lessonRequests.map(lr => ({ ...lr, _type: 'lesson-request' })),
@@ -540,7 +547,7 @@ function historyCardHTML(item) {
       <p class="match-name" style="font-size:17px; margin-top:4px;">${escapeHtml(specialtyLabel)}${instructorName ? ' with ' + escapeHtml(instructorName) : ''}</p>
       ${item.status === 'matched' && item.instructor ? `
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
-          <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleReviewForm('${key}')">Leave a Review</button>
+          <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleReviewForm('${key}')">${reviewsByKey[key] ? 'Edit Review' : 'Leave a Review'}</button>
           ${!isRecurringOccurrence ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="${rebookCall}">Book Again with ${escapeHtml(instructorName)}</button>` : ''}
           ${canMakeRecurring ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="makeRecurring(${item.id})">Make This Standing Weekly</button>` : ''}
           ${hasSessionsToSchedule ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleScheduleNextForm('${key}', ${item.id})">Schedule Next Session (${item.sessions_scheduled} of ${item.sessions_total})</button>` : ''}
@@ -718,14 +725,19 @@ function toggleReviewForm(key) {
     el.innerHTML = '';
     return;
   }
+  const existing = reviewsByKey[key];
   el.style.display = 'block';
   el.innerHTML = `
     <div class="star-picker" id="stars-${key}">
       ${[1, 2, 3, 4, 5].map(n => `<span class="star" data-star="${n}" onclick="selectStar('${key}', ${n})">★</span>`).join('')}
     </div>
-    <textarea class="field-input" id="comment-${key}" placeholder="Optional comment" style="margin-top:8px; min-height:60px;"></textarea>
+    <textarea class="field-input" id="comment-${key}" placeholder="Optional comment" style="margin-top:8px; min-height:60px;">${existing ? escapeHtml(existing.comment || '') : ''}</textarea>
     <div id="review-error-${key}" class="form-error" style="display:none; margin-top:8px;"></div>
-    <button class="btn btn-primary btn-block" style="margin-top:8px; padding:10px;" onclick="submitReview('${key}')">Submit Review</button>`;
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button class="btn btn-primary btn-block" style="padding:10px;" onclick="submitReview('${key}')">${existing ? 'Update Review' : 'Submit Review'}</button>
+      ${existing ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="deleteReview('${key}')">Delete Review</button>` : ''}
+    </div>`;
+  if (existing) selectStar(key, existing.rating);
 }
 
 function selectStar(key, n) {
@@ -739,6 +751,7 @@ async function submitReview(key) {
   const dashIndex = key.lastIndexOf('-');
   const type = key.slice(0, dashIndex);
   const id = Number(key.slice(dashIndex + 1));
+  const existing = reviewsByKey[key];
   const rating = selectedStars[key];
   const errorEl = document.getElementById(`review-error-${key}`);
   errorEl.style.display = 'none';
@@ -747,14 +760,31 @@ async function submitReview(key) {
     errorEl.style.display = 'block';
     return;
   }
-  const payload = { rating, comment: document.getElementById(`comment-${key}`).value.trim() || null };
-  if (type === 'lesson-request') payload.lesson_request_id = id; else payload.booking_id = id;
+  const comment = document.getElementById(`comment-${key}`).value.trim() || null;
   try {
-    await apiFetch('/api/customer/reviews', { method: 'POST', body: JSON.stringify(payload) });
-    document.getElementById(`review-form-${key}`).innerHTML = '<p class="card-sub" style="text-align:left; margin:0;">Thanks for your review!</p>';
+    if (existing) {
+      await apiFetch(`/api/customer/reviews/${existing.id}`, { method: 'PUT', body: JSON.stringify({ rating, comment }) });
+    } else {
+      const payload = { rating, comment };
+      if (type === 'lesson-request') payload.lesson_request_id = id; else payload.booking_id = id;
+      await apiFetch('/api/customer/reviews', { method: 'POST', body: JSON.stringify(payload) });
+    }
+    await loadHistory();
   } catch (err) {
     errorEl.textContent = err.message || 'Could not submit review.';
     errorEl.style.display = 'block';
+  }
+}
+
+async function deleteReview(key) {
+  const existing = reviewsByKey[key];
+  if (!existing) return;
+  if (!confirm('Delete this review? This cannot be undone.')) return;
+  try {
+    await apiFetch(`/api/customer/reviews/${existing.id}`, { method: 'DELETE' });
+    await loadHistory();
+  } catch (err) {
+    alert(err.message || 'Could not delete this review.');
   }
 }
 

@@ -136,3 +136,125 @@ def test_no_reviews_yet_means_null_average_not_zero(client, customer_auth_header
     my_booking = client.get("/api/customer/bookings/me", headers=customer_auth_headers).json()
     assert my_booking["instructor"]["average_rating"] is None
     assert my_booking["instructor"]["review_count"] == 0
+
+
+def _create_review(client, customer_auth_headers, booking_id, rating=5, comment="Loved it!"):
+    res = client.post(
+        "/api/customer/reviews",
+        json={"booking_id": booking_id, "rating": rating, "comment": comment},
+        headers=customer_auth_headers,
+    )
+    assert res.status_code == 201, res.text
+    return res.json()["id"]
+
+
+def test_edit_review_rating_only(client, customer_auth_headers):
+    _, booking_id = _make_matched_booking(client, customer_auth_headers, email="edit_rating@example.com")
+    review_id = _create_review(client, customer_auth_headers, booking_id, rating=3, comment="Fine.")
+
+    res = client.put(f"/api/customer/reviews/{review_id}", json={"rating": 5}, headers=customer_auth_headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["rating"] == 5
+    assert body["comment"] == "Fine."
+
+
+def test_edit_review_comment_only(client, customer_auth_headers):
+    _, booking_id = _make_matched_booking(client, customer_auth_headers, email="edit_comment@example.com")
+    review_id = _create_review(client, customer_auth_headers, booking_id, rating=3, comment="Fine.")
+
+    res = client.put(f"/api/customer/reviews/{review_id}", json={"comment": "Actually great!"}, headers=customer_auth_headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["rating"] == 3
+    assert body["comment"] == "Actually great!"
+
+
+def test_edit_review_rating_and_comment(client, customer_auth_headers):
+    _, booking_id = _make_matched_booking(client, customer_auth_headers, email="edit_both@example.com")
+    review_id = _create_review(client, customer_auth_headers, booking_id, rating=3, comment="Fine.")
+
+    res = client.put(
+        f"/api/customer/reviews/{review_id}", json={"rating": 1, "comment": "Changed my mind."}, headers=customer_auth_headers,
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["rating"] == 1
+    assert body["comment"] == "Changed my mind."
+
+
+def test_edit_review_rejects_out_of_range_rating(client, customer_auth_headers):
+    _, booking_id = _make_matched_booking(client, customer_auth_headers, email="edit_invalid@example.com")
+    review_id = _create_review(client, customer_auth_headers, booking_id)
+
+    res = client.put(f"/api/customer/reviews/{review_id}", json={"rating": 0}, headers=customer_auth_headers)
+    assert res.status_code == 400
+
+
+def test_cannot_edit_another_customers_review(client, customer_auth_headers):
+    _, booking_id = _make_matched_booking(client, customer_auth_headers, email="edit_not_yours@example.com")
+    review_id = _create_review(client, customer_auth_headers, booking_id)
+
+    other_token = signup_customer(client, email="other_editor@example.com")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    res = client.put(f"/api/customer/reviews/{review_id}", json={"rating": 1}, headers=other_headers)
+    assert res.status_code == 404
+
+
+def test_delete_review(client, customer_auth_headers):
+    _, booking_id = _make_matched_booking(client, customer_auth_headers, email="delete_review@example.com")
+    review_id = _create_review(client, customer_auth_headers, booking_id)
+
+    res = client.delete(f"/api/customer/reviews/{review_id}", headers=customer_auth_headers)
+    assert res.status_code == 204
+
+    mine = client.get("/api/customer/reviews", headers=customer_auth_headers).json()
+    assert mine == []
+
+
+def test_cannot_delete_another_customers_review(client, customer_auth_headers):
+    _, booking_id = _make_matched_booking(client, customer_auth_headers, email="delete_not_yours@example.com")
+    review_id = _create_review(client, customer_auth_headers, booking_id)
+
+    other_token = signup_customer(client, email="other_deleter@example.com")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    res = client.delete(f"/api/customer/reviews/{review_id}", headers=other_headers)
+    assert res.status_code == 404
+
+    # Still there — the delete above must not have gone through.
+    mine = client.get("/api/customer/reviews", headers=customer_auth_headers).json()
+    assert len(mine) == 1
+
+
+def test_delete_review_updates_instructors_average_rating(client, customer_auth_headers):
+    instructor_headers, booking_id = _make_matched_booking(client, customer_auth_headers, email="delete_updates_avg@example.com")
+    review_id = _create_review(client, customer_auth_headers, booking_id, rating=2)
+
+    my_booking = client.get("/api/customer/bookings/me", headers=customer_auth_headers).json()
+    assert my_booking["instructor"]["average_rating"] == 2.0
+    assert my_booking["instructor"]["review_count"] == 1
+
+    res = client.delete(f"/api/customer/reviews/{review_id}", headers=customer_auth_headers)
+    assert res.status_code == 204
+
+    my_booking_after = client.get("/api/customer/bookings/me", headers=customer_auth_headers).json()
+    assert my_booking_after["instructor"]["average_rating"] is None
+    assert my_booking_after["instructor"]["review_count"] == 0
+
+
+def test_my_written_reviews_requires_customer_auth(client):
+    res = client.get("/api/customer/reviews")
+    assert res.status_code == 401
+
+
+def test_my_written_reviews_lists_only_this_customers_reviews(client, customer_auth_headers):
+    _, booking_id = _make_matched_booking(client, customer_auth_headers, email="list_mine@example.com")
+    _create_review(client, customer_auth_headers, booking_id)
+
+    mine = client.get("/api/customer/reviews", headers=customer_auth_headers).json()
+    assert len(mine) == 1
+    assert mine[0]["booking_id"] == booking_id
+
+    other_token = signup_customer(client, email="other_lister@example.com")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    assert client.get("/api/customer/reviews", headers=other_headers).json() == []
