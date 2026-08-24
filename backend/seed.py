@@ -14,6 +14,7 @@ duplicating them.
     Instructor login:  demo@attune.app / password123   (yoga + sound bath)
     Instructor login:  kai@attune.app / password123     (sound bath only)
     Instructor login:  priya@attune.app / password123   (yoga only)
+    Customer login:    demo.customer@attune.app / password123
 """
 from app.database import SessionLocal, engine, Base
 from app import geo, models
@@ -95,6 +96,17 @@ try:
             ])
             db.commit()
             print(f"Seeded availability for {data['name']}.")
+
+    demo_customer = db.query(models.Customer).filter(models.Customer.email == "demo.customer@attune.app").first()
+    if not demo_customer:
+        demo_customer = models.Customer(
+            name="Jordan Lee", email="demo.customer@attune.app", phone="(212) 555-0199",
+            hashed_password=hash_password("password123"),
+            latitude=NYC["lat"], longitude=NYC["lng"],
+        )
+        db.add(demo_customer)
+        db.commit()
+        print("Created customer: demo.customer@attune.app / password123")
 
     maya = instructors_by_email["demo@attune.app"]
 

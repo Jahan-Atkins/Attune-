@@ -52,6 +52,7 @@ p{margin:0;}
 .wizard-card{max-width:400px; margin:40px auto; background:#fff; border-radius:26px; box-shadow:var(--shadow); padding:32px 28px;}
 .card-title{font-size:24px; font-weight:600; text-align:center;}
 .card-sub{text-align:center; color:var(--muted); font-size:14px; margin-top:6px; margin-bottom:20px;}
+.login-hint{text-align:center; color:var(--muted); font-size:11.5px; margin-top:16px;}
 .wizard-header{display:flex; align-items:center; justify-content:space-between; max-width:640px; margin:24px auto 0;}
 .back-link{background:none; border:none; color:var(--muted); font-family:'Work Sans',sans-serif; font-weight:600; font-size:14px; cursor:pointer;}
 .step-label{font-size:12.5px; color:var(--muted); font-weight:600;}
