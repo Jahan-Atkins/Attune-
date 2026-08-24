@@ -52,14 +52,11 @@ DURATION_PRICING = {
 }
 
 # Per-session discount for a multi-session package, derived exactly from
-# bookings.py's legacy PACKAGE_PRICING so the numbers still match it
-# precisely at the 30-minute baseline (single=$65, pack4=$220, pack8=$400,
-# pack12=$780, pack16=$1040) and scale consistently for other durations —
-# pack4/pack8 aren't flat prices, they're the same real discount applied
-# to whatever duration price the customer picked. pack12/pack16 work out
-# to a discount of exactly 1.0 (no discount at all) because their
-# PACKAGE_PRICING entries are just DURATION_PRICING[30] x sessions —
-# straight duration-price-times-session-count, by design.
+# bookings.py's legacy PACKAGE_PRICING (see that file's comment for the
+# discount curve and rounding convention) so the numbers scale
+# consistently for any duration, not just the 30-minute baseline — a
+# package isn't a flat price, it's a real per-session discount applied to
+# whatever duration price the customer picked.
 PACKAGE_DISCOUNT = {key: info["price"] / (info["sessions"] * DURATION_PRICING[30]) for key, info in PACKAGE_PRICING.items()}
 
 

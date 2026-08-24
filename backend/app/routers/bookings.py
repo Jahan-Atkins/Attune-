@@ -30,15 +30,22 @@ from ..security import get_current_customer
 
 router = APIRouter(prefix="/api/customer/bookings", tags=["bookings"])
 
-# pack12/pack16 are priced with no per-session discount, unlike pack4/pack8
-# above — just DURATION_PRICING[30] x sessions, so lesson_requests.py's
-# derived PACKAGE_DISCOUNT works out to exactly 1.0 for both.
+# The per-session discount grows with package size: 0% for single/pack4,
+# ~5% for pack8, ~8% for pack12, ~12% for pack16. Each `price` here is
+# round(DURATION_PRICING[30] x (1 - discount)) x sessions — per-session
+# rounded to a whole dollar *before* multiplying, matching how
+# lesson_requests.py's _price_for() rounds at every other duration too —
+# so the actual discount lands a fraction of a point off the target
+# percentage (e.g. pack8 is 4.62%, not exactly 5%); that's expected, not
+# a bug. lesson_requests.py's PACKAGE_DISCOUNT is derived from these
+# numbers, not the other way around — change the discount by changing
+# `price` here, not by hand-editing a ratio there.
 PACKAGE_PRICING = {
     "single": {"sessions": 1, "price": 65},
-    "pack4": {"sessions": 4, "price": 220},
-    "pack8": {"sessions": 8, "price": 400},
-    "pack12": {"sessions": 12, "price": 780},
-    "pack16": {"sessions": 16, "price": 1040},
+    "pack4": {"sessions": 4, "price": 260},
+    "pack8": {"sessions": 8, "price": 496},
+    "pack12": {"sessions": 12, "price": 720},
+    "pack16": {"sessions": 16, "price": 912},
 }
 
 

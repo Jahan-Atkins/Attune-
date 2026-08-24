@@ -93,34 +93,35 @@ def test_price_scales_with_duration_for_a_single(client, customer_auth_headers):
 
 
 def test_price_matches_selected_package(client, customer_auth_headers):
-    # At the 30-minute baseline, package pricing reproduces the legacy
-    # PACKAGE_PRICING numbers exactly: single=$65, pack4=$220, pack8=$400.
+    # At the 30-minute baseline, package pricing reproduces bookings.py's
+    # PACKAGE_PRICING numbers exactly: single=$65 (0% off), pack4=$260
+    # (0% off), pack8=$496 (~5% off).
     single = client.post("/api/customer/lesson-requests", json=_request_payload(package="single", duration_minutes=30), headers=customer_auth_headers).json()
     assert single["amount_paid"] == 65
     assert single["sessions_total"] == 1
 
     pack4 = client.post("/api/customer/lesson-requests", json=_request_payload(package="pack4", duration_minutes=30, windows=[_window(day=2)]), headers=customer_auth_headers).json()
-    assert pack4["amount_paid"] == 220
+    assert pack4["amount_paid"] == 260
     assert pack4["sessions_total"] == 4
 
     pack8 = client.post("/api/customer/lesson-requests", json=_request_payload(package="pack8", duration_minutes=30, windows=[_window(day=3)]), headers=customer_auth_headers).json()
-    assert pack8["amount_paid"] == 400
+    assert pack8["amount_paid"] == 496
     assert pack8["sessions_total"] == 8
 
 
-def test_pack12_and_pack16_have_no_per_session_discount(client, customer_auth_headers):
-    # Unlike pack4/pack8, pack12/pack16 are priced with zero discount:
-    # duration price x session count, exactly, at any duration.
+def test_pack12_and_pack16_pricing(client, customer_auth_headers):
+    # pack12 (~8% off) and pack16 (~12% off) get steeper discounts than
+    # pack8, continuing the same "bigger package, bigger discount" curve.
     pack12 = client.post(
         "/api/customer/lesson-requests", json=_request_payload(package="pack12", duration_minutes=30, windows=[_window(day=2)]), headers=customer_auth_headers
     ).json()
-    assert pack12["amount_paid"] == 65 * 12
+    assert pack12["amount_paid"] == 720
     assert pack12["sessions_total"] == 12
 
     pack16 = client.post(
         "/api/customer/lesson-requests", json=_request_payload(package="pack16", duration_minutes=90, windows=[_window(day=3)]), headers=customer_auth_headers
     ).json()
-    assert pack16["amount_paid"] == 160 * 16
+    assert pack16["amount_paid"] == 2240
     assert pack16["sessions_total"] == 16
 
 
