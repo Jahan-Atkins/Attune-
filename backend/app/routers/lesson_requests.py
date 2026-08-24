@@ -336,3 +336,54 @@ def get_my_latest_lesson_request(
     if not lesson_request:
         raise HTTPException(status_code=404, detail="No lesson request yet")
     return lesson_request
+
+
+@router.put("/{lesson_request_id}/cancel", response_model=schemas.LessonRequestOut)
+def cancel_lesson_request(
+    lesson_request_id: int,
+    db: Session = Depends(get_db),
+    customer: models.Customer = Depends(get_current_customer),
+):
+    """Customer-side self-cancel — same status-flag convention as
+    admin.py's force_cancel_lesson_request, just "cancelled_by_customer"
+    instead of "cancelled_by_admin"."""
+    lesson_request = (
+        db.query(models.LessonRequest)
+        .filter(models.LessonRequest.id == lesson_request_id, models.LessonRequest.customer_id == customer.id)
+        .first()
+    )
+    if not lesson_request:
+        raise HTTPException(status_code=404, detail="Lesson request not found.")
+    if lesson_request.status in ("cancelled_by_admin", "cancelled_by_customer"):
+        raise HTTPException(status_code=400, detail="Already cancelled.")
+    if lesson_request.status == "unmatched":
+        raise HTTPException(status_code=400, detail="This request was never matched — there's nothing to cancel.")
+    if lesson_request.recurring_series_id is not None:
+        # This row is one occurrence of a RecurringSeries, not a
+        # standalone request — recurring_series.py already owns
+        # pause/cancel for the series that generated it.
+        raise HTTPException(
+            status_code=400,
+            detail="This is part of a recurring booking — manage it from Recurring Bookings instead.",
+        )
+    if (
+        lesson_request.session_number == 1
+        and lesson_request.sessions_total > 1
+        and (lesson_request.sessions_scheduled or 0) > 1
+    ):
+        raise HTTPException(status_code=400, detail="Contact support to cancel a package with already-scheduled sessions.")
+
+    was_matched = lesson_request.status == "matched"
+    instructor = lesson_request.instructor
+    lesson_request.status = "cancelled_by_customer"
+    db.commit()
+    db.refresh(lesson_request)
+    if was_matched and instructor and instructor.email_notifications:
+        # A matched request already blocked real calendar time for the
+        # instructor — they need to know it's freed up again.
+        send_email(
+            to=instructor.email,
+            subject=f"Lesson request cancelled by {customer.name}",
+            body=f"{customer.name} cancelled their lesson request with you.",
+        )
+    return lesson_request
