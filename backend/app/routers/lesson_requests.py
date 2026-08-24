@@ -128,14 +128,14 @@ def _validate_preferred_instructor(
     ):
         raise HTTPException(
             status_code=400,
-            detail="This instructor can't currently take this request — try a regular request instead.",
+            detail="This instructor can't currently take this request. Try a regular request instead.",
         )
     window_tuples = [(w.day_of_week, w.start_time, w.end_time) for w in windows]
     blocks = [(b.day_of_week, b.start_time, b.end_time) for b in instructor.availability_blocks]
     if has_overlap_any(window_tuples, blocks, duration_minutes) is None:
         raise HTTPException(
             status_code=400,
-            detail="This instructor doesn't have any of those times open — try different windows or a regular request instead.",
+            detail="This instructor doesn't have any of those times open. Try different windows or a regular request instead.",
         )
 
 
@@ -253,7 +253,7 @@ def schedule_next_session(
     blocks = [(b.day_of_week, b.start_time, b.end_time) for b in instructor.availability_blocks]
     match = has_overlap_any(window_tuples, blocks, root.duration_minutes)
     if match is None:
-        raise HTTPException(status_code=400, detail="None of these windows currently fit this instructor's availability — try different times.")
+        raise HTTPException(status_code=400, detail="None of these windows currently fit this instructor's availability. Try different times.")
     (day, _window_start, _window_end), (matched_start, matched_end) = match
 
     session = models.LessonRequest(

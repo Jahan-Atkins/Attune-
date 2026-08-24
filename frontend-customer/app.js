@@ -113,7 +113,7 @@ async function submitResetPasswordForm(evt) {
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'That reset link is invalid or has expired.');
     goToScreen('auth');
-    document.getElementById('auth-error').textContent = 'Password updated — log in with your new password.';
+    document.getElementById('auth-error').textContent = 'Password updated. Log in with your new password.';
     document.getElementById('auth-error').style.display = 'block';
   } catch (err) {
     errorEl.textContent = err.message || 'That reset link is invalid or has expired.';
@@ -190,7 +190,7 @@ async function apiFetch(path, options = {}) {
     clearToken();
     updateNav();
     goHome();
-    throw new Error('Session expired — please log in again.');
+    throw new Error('Session expired. Please log in again.');
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -245,7 +245,7 @@ async function loadPackages() {
         </button>`;
     }).join('');
   } catch (err) {
-    listEl.innerHTML = `<p class="form-error">Couldn't load packages — is the backend running?</p>`;
+    listEl.innerHTML = `<p class="form-error">Couldn't load packages. Is the backend running?</p>`;
     console.error(err);
   }
 }
@@ -460,7 +460,7 @@ async function loadHistory() {
     }
   } catch (err) {
     listEl.innerHTML = '';
-    emptyEl.textContent = "Couldn't load your history — is the backend running?";
+    emptyEl.textContent = "Couldn't load your history. Is the backend running?";
     emptyEl.style.display = 'block';
     console.error('Failed to load history:', err);
   }
@@ -573,7 +573,7 @@ async function toggleBlockInstructor(instructorId, encodedName) {
 async function makeRecurring(lessonRequestId) {
   try {
     await apiFetch('/api/customer/recurring-series', { method: 'POST', body: JSON.stringify({ lesson_request_id: lessonRequestId }) });
-    alert("You're set — this is now a standing weekly booking. See it under Recurring Bookings.");
+    alert("You're set. This is now a standing weekly booking. See it under Recurring Bookings.");
     await loadHistory();
   } catch (err) {
     alert(err.message || 'Could not set up a standing booking.');
@@ -747,7 +747,7 @@ async function loadRecurringSeries() {
     }
   } catch (err) {
     listEl.innerHTML = '';
-    emptyEl.textContent = "Couldn't load your recurring bookings — is the backend running?";
+    emptyEl.textContent = "Couldn't load your recurring bookings. Is the backend running?";
     emptyEl.style.display = 'block';
     console.error('Failed to load recurring series:', err);
   }
@@ -792,7 +792,7 @@ async function resumeSeries(id) {
 }
 
 async function cancelSeries(id) {
-  if (!confirm('Cancel this standing weekly booking? Already-scheduled upcoming lessons stay on your calendar — only future ones stop being created.')) return;
+  if (!confirm('Cancel this standing weekly booking? Already-scheduled upcoming lessons stay on your calendar, only future ones stop being created.')) return;
   try {
     await apiFetch(`/api/customer/recurring-series/${id}`, { method: 'DELETE' });
     await loadRecurringSeries();
@@ -845,7 +845,7 @@ function renderMatch(result, justBooked) {
     document.getElementById('match-specialty-badge').textContent = specialtyLabel;
     document.getElementById('match-bio').textContent = '';
     document.getElementById('match-certs').textContent = '';
-    pendingEl.textContent = "We've sent your request to nearby instructors who offer this — you'll be matched (and your card charged) as soon as one confirms. Check back any time.";
+    pendingEl.textContent = "We've sent your request to nearby instructors who offer this. You'll be matched (and your card charged) as soon as one confirms. Check back any time.";
     pendingEl.style.display = 'block';
     return;
   }
@@ -853,8 +853,8 @@ function renderMatch(result, justBooked) {
   document.getElementById('match-eyebrow').textContent = justBooked ? "You're matched!" : 'Your match';
 
   unmatchedEl.textContent = isLessonRequest
-    ? "No instructor could fulfill any of those windows — try different days, times, or a shorter lesson length."
-    : "No active instructor currently offers this specialty — please check back later.";
+    ? "No instructor could fulfill any of those windows. Try different days, times, or a shorter lesson length."
+    : "No active instructor currently offers this specialty. Please check back later.";
 
   if (!result.instructor) {
     // Truly unmatched: requested_day/matched_start_time are never set on

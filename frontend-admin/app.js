@@ -73,7 +73,7 @@ async function apiFetch(path, options = {}) {
   const res = await fetch(path, Object.assign({}, options, { headers }));
   if (res.status === 401) {
     logout();
-    throw new Error('Session expired — please log in again.');
+    throw new Error('Session expired. Please log in again.');
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -106,7 +106,7 @@ async function openDashboard() {
       </div>
       <div class="metric-card">
         <p class="metric-label">Match rate (30d)</p>
-        <p class="metric-value">${m.match_rate_30d != null ? Math.round(m.match_rate_30d * 100) + '%' : '—'}</p>
+        <p class="metric-value">${m.match_rate_30d != null ? Math.round(m.match_rate_30d * 100) + '%' : 'N/A'}</p>
         <p class="metric-breakdown">confirmed ÷ (confirmed + unmatched)</p>
       </div>
       <div class="metric-card">
@@ -427,7 +427,7 @@ function reportRowHTML(r) {
     <div class="admin-row">
       <div class="admin-row-main">
         <p class="admin-row-title">${escapeHtml(r.reporter_name)} (${reporterLabel}) reported ${escapeHtml(r.reported_name)} (${reportedLabel})</p>
-        <p class="admin-row-meta">${escapeHtml(r.reason)}${r.message ? ' — ' + escapeHtml(r.message) : ''} · ${escapeHtml(dateStr)}${r.resolved ? ' · Resolved' : ''}</p>
+        <p class="admin-row-meta">${escapeHtml(r.reason)}${r.message ? ': ' + escapeHtml(r.message) : ''} · ${escapeHtml(dateStr)}${r.resolved ? ' · Resolved' : ''}</p>
       </div>
       ${!r.resolved ? `
       <div class="admin-row-actions">

@@ -125,7 +125,7 @@ async function submitResetPasswordForm(evt, token) {
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'That reset link is invalid or has expired.');
     closeModal();
-    document.getElementById('login-error').textContent = 'Password updated — log in with your new password.';
+    document.getElementById('login-error').textContent = 'Password updated. Log in with your new password.';
     document.getElementById('login-error').style.display = 'block';
   } catch (err) {
     errorEl.textContent = err.message || 'That reset link is invalid or has expired.';
@@ -196,7 +196,7 @@ async function apiFetch(path, options = {}) {
   const res = await fetch(path, Object.assign({}, options, { headers }));
   if (res.status === 401) {
     logout();
-    throw new Error('Session expired — please log in again.');
+    throw new Error('Session expired. Please log in again.');
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -286,7 +286,7 @@ async function loadClients(status) {
     }
   } catch (err) {
     listEl.innerHTML = '';
-    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load clients — is the backend running?";
+    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load clients. Is the backend running?";
     emptyEl.style.display = 'block';
     console.error('Failed to load clients:', err);
   }
@@ -316,7 +316,7 @@ function openClientForm(id) {
         </div>
       </div>
       <label class="field-label">Next session</label>
-      <input class="field-input" id="cf-next" placeholder="e.g. Thu, 6:00 PM — leave blank if none" value="${c && c.next_session ? escapeAttr(c.next_session) : ''}">
+      <input class="field-input" id="cf-next" placeholder="e.g. Thu, 6:00 PM - leave blank if none" value="${c && c.next_session ? escapeAttr(c.next_session) : ''}">
       <div class="field-row">
         <div>
           <label class="field-label">Sessions completed</label>
@@ -535,8 +535,8 @@ function renderClientDetail(c) {
     availEl.innerHTML = `
       <div class="card" style="padding:18px 20px;">
         <div class="field-row">
-          <div><p class="next-label" style="text-align:left;">Start Date</p><p class="client-name" style="font-size:14px;">${c.start_date ? escapeHtml(c.start_date) : '—'}</p></div>
-          <div><p class="next-label" style="text-align:left;">Lessons / Week</p><p class="client-name" style="font-size:14px;">${c.lessons_per_week != null ? c.lessons_per_week + ' Lessons' : '—'}</p></div>
+          <div><p class="next-label" style="text-align:left;">Start Date</p><p class="client-name" style="font-size:14px;">${c.start_date ? escapeHtml(c.start_date) : 'Not set'}</p></div>
+          <div><p class="next-label" style="text-align:left;">Lessons / Week</p><p class="client-name" style="font-size:14px;">${c.lessons_per_week != null ? c.lessons_per_week + ' Lessons' : 'Not set'}</p></div>
         </div>
         <p class="next-label" style="text-align:left; margin-top:14px;">Days available</p>
         <div style="margin-top:6px;">${dayChips}</div>
@@ -1015,7 +1015,7 @@ async function loadClientRequests() {
     }
   } catch (err) {
     listEl.innerHTML = '';
-    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load client requests — is the backend running?";
+    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load client requests. Is the backend running?";
     emptyEl.style.display = 'block';
     console.error('Failed to load client requests:', err);
   }
@@ -1027,7 +1027,7 @@ async function confirmClientRequest(type, id) {
     await Promise.all([loadClientRequests(), loadClients('current'), loadClients('past'), loadSummary()]);
     alert(`You're matched with ${confirmed.customer_name}!\n\nEmail: ${confirmed.customer_email}\nPhone: ${confirmed.customer_phone}\n\n(Also saved on their Client Details page.)`);
   } catch (err) {
-    alert(err.message || 'Could not confirm this match — it may have just been claimed by another instructor.');
+    alert(err.message || 'Could not confirm this match. It may have just been claimed by another instructor.');
     await loadClientRequests();
   }
 }
@@ -1041,7 +1041,7 @@ let clientRequestsMapInstance = null;
 
 function openClientRequestsMap() {
   const body = `<div id="client-requests-map" style="height:360px; border-radius:16px; overflow:hidden;"></div>
-    <p class="empty-copy" style="margin-top:14px;">Pins show pending client requests currently visible to you — tap one for the pay and specialty.</p>`;
+    <p class="empty-copy" style="margin-top:14px;">Pins show pending client requests currently visible to you. Tap one for the pay and specialty.</p>`;
   openModal('Client Requests Map', body);
 
   const pins = clientRequestsCache.filter(r => r.customer_lat != null && r.customer_lng != null);
@@ -1247,7 +1247,7 @@ async function loadAvailability() {
     }
   } catch (err) {
     listEl.innerHTML = '';
-    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load availability — is the backend running?";
+    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load availability. Is the backend running?";
     emptyEl.style.display = 'block';
     console.error('Failed to load availability:', err);
   }
@@ -1317,7 +1317,7 @@ async function loadFaqs(category) {
       ? data.map(f => `<div class="faq-card">${escapeHtml(f.question)}</div>`).join('')
       : `<p class="empty-copy" style="margin-top:30px;">No FAQs in this category yet.</p>`;
   } catch (err) {
-    listEl.innerHTML = `<p class="empty-copy" style="margin-top:30px;">Couldn't load FAQs — is the backend running?</p>`;
+    listEl.innerHTML = `<p class="empty-copy" style="margin-top:30px;">Couldn't load FAQs. Is the backend running?</p>`;
     console.error('Failed to load FAQs:', err);
   }
 }
@@ -1354,7 +1354,7 @@ async function loadMyReviews() {
       </div>`).join('');
   } catch (err) {
     listEl.innerHTML = '';
-    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load reviews — is the backend running?";
+    emptyEl.querySelector('.empty-copy').textContent = "Couldn't load reviews. Is the backend running?";
     emptyEl.style.display = 'block';
     console.error('Failed to load reviews:', err);
   }
