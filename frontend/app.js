@@ -182,6 +182,51 @@ function logout() {
 }
 
 /* =========================================================
+   GOOGLE SIGN-IN
+   Only renders a button if the backend reports a configured
+   GOOGLE_CLIENT_ID (see main.py's GET /api/config) — a deployment with
+   no client ID set just shows the normal email/password form, not a
+   broken button. See google_auth.py's module docstring for why this
+   never applies to Admin accounts (no equivalent on frontend-admin).
+   ========================================================= */
+async function initGoogleSignIn() {
+  let config;
+  try {
+    config = await (await fetch('/api/config')).json();
+  } catch (err) {
+    return; // no config endpoint reachable yet — fail quiet, form still works
+  }
+  if (!config.google_client_id || typeof google === 'undefined') return;
+
+  google.accounts.id.initialize({
+    client_id: config.google_client_id,
+    callback: handleGoogleCredential,
+  });
+  google.accounts.id.renderButton(document.getElementById('google-signin-btn'), {
+    theme: 'outline', size: 'large', width: 280,
+  });
+  document.getElementById('google-signin-wrap').style.display = 'block';
+}
+
+async function handleGoogleCredential(response) {
+  const errorEl = document.getElementById('login-error');
+  errorEl.style.display = 'none';
+  try {
+    const res = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_token: response.credential }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Could not sign in with Google.');
+    setToken((await res.json()).access_token);
+    await boot();
+  } catch (err) {
+    errorEl.textContent = err.message || 'Something went wrong.';
+    errorEl.style.display = 'block';
+  }
+}
+
+/* =========================================================
    API LAYER
    Same-origin requests to our own FastAPI backend. apiFetch
    attaches the auth token automatically and logs the user out
@@ -1399,6 +1444,7 @@ document.addEventListener('DOMContentLoaded', () => {
     openResetPasswordModal(resetToken);
   }
   boot();
+  initGoogleSignIn();
 });
 
 if ('serviceWorker' in navigator) {

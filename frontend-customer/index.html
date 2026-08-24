@@ -13,6 +13,9 @@
 <meta name="apple-mobile-web-app-title" content="Attune">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<!-- Google Identity Services — only renders a button if GET /api/config
+     reports a configured google_client_id; see app.js's initGoogleSignIn. -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -80,6 +83,10 @@
         <input class="field-input" type="password" id="auth-password" required>
         <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;" id="auth-submit-btn">Log In</button>
       </form>
+      <div id="google-signin-wrap" style="display:none; margin-top:14px; text-align:center;">
+        <p class="card-sub" style="margin:0 0 10px;">or</p>
+        <div id="google-signin-btn" style="display:flex; justify-content:center;"></div>
+      </div>
       <button class="link-btn" onclick="toggleAuthMode()" id="auth-toggle-btn">New here? Create an account</button>
       <button class="link-btn" id="forgot-password-btn" onclick="goToScreen('forgot-password')">Forgot password?</button>
       <p class="login-hint">Demo login: demo.customer@attune.app / password123</p>

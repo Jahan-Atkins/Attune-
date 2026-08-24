@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas, security
 from ..database import get_db
 from ..email import send_email
+from ..google_auth import verify_google_id_token
 from ..rate_limit import check_rate_limit, record_failed_attempt, reset_attempts
 
 router = APIRouter(prefix="/api/customer/auth", tags=["customer-auth"])
@@ -54,6 +55,27 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
             headers={"WWW-Authenticate": "Bearer"},
         )
     reset_attempts("login-customer", request, form_data.username)
+    token = security.create_access_token(customer.id, subject_type="customer")
+    return schemas.Token(access_token=token)
+
+
+@router.post("/google", response_model=schemas.Token)
+def login_with_google(payload: schemas.GoogleAuthRequest, db: Session = Depends(get_db)):
+    """Mirrors auth.py's login_with_google — see that docstring."""
+    try:
+        identity = verify_google_id_token(payload.id_token)
+    except RuntimeError:
+        raise HTTPException(status_code=501, detail="Google sign-in isn't configured on this server yet.")
+    if not identity:
+        raise HTTPException(status_code=401, detail="Could not verify that Google account.")
+
+    customer = db.query(models.Customer).filter(models.Customer.email == identity["email"]).first()
+    if not customer:
+        customer = models.Customer(name=identity["name"], email=identity["email"], phone="", hashed_password=None)
+        db.add(customer)
+        db.commit()
+        db.refresh(customer)
+
     token = security.create_access_token(customer.id, subject_type="customer")
     return schemas.Token(access_token=token)
 

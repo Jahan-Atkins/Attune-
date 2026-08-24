@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from . import geo, models, schemas
+from . import geo, google_auth, models, schemas
 from .database import engine, get_db
 from .security import get_current_instructor
 from .routers import auth, clients, sessions, profile, faqs, customer_auth, bookings, availability, lesson_requests, client_requests, reviews, recurring_series, admin_auth, admin, reports, blocks
@@ -89,6 +89,18 @@ def list_cities():
     """Both frontends fetch this instead of hardcoding the demo city list,
     so the dropdown and the backend's DEMO_CITIES never drift apart."""
     return [city["name"] for city in geo.DEMO_CITIES]
+
+
+@app.get("/api/config", response_model=schemas.PublicConfig)
+def get_public_config():
+    """Non-secret, deploy-time config the frontend needs to decide what
+    to render — right now just whether Google sign-in is configured on
+    this deployment. The instructor/customer apps fetch this once on
+    load and only render a "Sign in with Google" button when
+    google_client_id is non-null, instead of showing a button that would
+    just fail. See google_auth.py's module docstring for why exposing
+    this particular value is safe."""
+    return schemas.PublicConfig(google_client_id=google_auth.GOOGLE_CLIENT_ID)
 
 
 @app.get("/api/summary", response_model=schemas.Summary)

@@ -1,9 +1,12 @@
 """
 Notification trigger points — see app/email.py's module docstring for
-why these are testable with plain capsys instead of mocking a provider:
-the only backend right now just prints, so asserting on stdout IS
-asserting on the behavior.
+why most of these are testable with plain capsys instead of mocking a
+provider: the console backend just prints, so asserting on stdout IS
+asserting on the behavior. The "resend" backend tests below mock
+httpx.post directly instead, since there's a real HTTP call to verify.
 """
+import httpx
+
 from .conftest import add_availability, create_admin_and_login, create_booking_row, signup_instructor_with_specialty
 
 CARD = {"card_name": "Jordan Lee", "card_number": "4242 4242 4242 4242", "card_expiry": "12/28", "card_cvc": "123"}
@@ -26,6 +29,66 @@ def test_send_email_prints_to_console(capsys):
     out = capsys.readouterr().out
     assert "someone@example.com" in out
     assert "Hello" in out
+
+
+def test_send_email_via_resend_calls_the_real_api(monkeypatch, capsys):
+    from app import email as email_module
+
+    monkeypatch.setattr(email_module, "EMAIL_BACKEND", "resend")
+    monkeypatch.setattr(email_module, "RESEND_API_KEY", "test-key-123")
+    captured = {}
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        return _FakeResponse()
+
+    monkeypatch.setattr(email_module.httpx, "post", fake_post)
+
+    email_module.send_email(to="someone@example.com", subject="Hello", body="World")
+
+    assert captured["url"] == "https://api.resend.com/emails"
+    assert captured["headers"]["Authorization"] == "Bearer test-key-123"
+    assert captured["json"]["to"] == ["someone@example.com"]
+    assert captured["json"]["subject"] == "Hello"
+    assert captured["json"]["text"] == "World"
+    assert "someone@example.com" not in capsys.readouterr().out  # no console fallback on success
+
+
+def test_send_email_via_resend_without_api_key_prints_instead(monkeypatch, capsys):
+    from app import email as email_module
+
+    monkeypatch.setattr(email_module, "EMAIL_BACKEND", "resend")
+    monkeypatch.setattr(email_module, "RESEND_API_KEY", None)
+
+    email_module.send_email(to="someone@example.com", subject="Hello", body="World")
+
+    out = capsys.readouterr().out
+    assert "someone@example.com" in out
+    assert "SKIPPED" in out
+
+
+def test_send_email_via_resend_failure_prints_instead_of_raising(monkeypatch, capsys):
+    from app import email as email_module
+
+    monkeypatch.setattr(email_module, "EMAIL_BACKEND", "resend")
+    monkeypatch.setattr(email_module, "RESEND_API_KEY", "test-key-123")
+
+    def fake_post_fails(url, headers=None, json=None, timeout=None):
+        raise httpx.ConnectError("connection failed")
+
+    monkeypatch.setattr(email_module.httpx, "post", fake_post_fails)
+
+    email_module.send_email(to="someone@example.com", subject="Hello", body="World")  # must not raise
+
+    out = capsys.readouterr().out
+    assert "someone@example.com" in out
+    assert "FAILED" in out
 
 
 def test_confirm_booking_notifies_both_sides(client, customer_auth_headers, capsys):

@@ -175,6 +175,51 @@ function logout() {
   goHome();
 }
 
+/* =========================================================
+   GOOGLE SIGN-IN
+   Only renders a button if the backend reports a configured
+   GOOGLE_CLIENT_ID (see main.py's GET /api/config) — a deployment with
+   no client ID set just shows the normal email/password form, not a
+   broken button.
+   ========================================================= */
+async function initGoogleSignIn() {
+  let config;
+  try {
+    config = await (await fetch('/api/config')).json();
+  } catch (err) {
+    return; // no config endpoint reachable yet — fail quiet, form still works
+  }
+  if (!config.google_client_id || typeof google === 'undefined') return;
+
+  google.accounts.id.initialize({
+    client_id: config.google_client_id,
+    callback: handleGoogleCredential,
+  });
+  google.accounts.id.renderButton(document.getElementById('google-signin-btn'), {
+    theme: 'outline', size: 'large', width: 280,
+  });
+  document.getElementById('google-signin-wrap').style.display = 'block';
+}
+
+async function handleGoogleCredential(response) {
+  const errorEl = document.getElementById('auth-error');
+  errorEl.style.display = 'none';
+  try {
+    const res = await fetch('/api/customer/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_token: response.credential }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Could not sign in with Google.');
+    setToken((await res.json()).access_token);
+    updateNav();
+    await routeLoggedInCustomer();
+  } catch (err) {
+    errorEl.textContent = err.message || 'Something went wrong.';
+    errorEl.style.display = 'block';
+  }
+}
+
 function updateNav() {
   const loggedIn = !!getToken();
   document.getElementById('nav-login-btn').style.display = loggedIn ? 'none' : 'inline-block';
@@ -932,6 +977,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (getToken()) {
     routeLoggedInCustomer();
   }
+  initGoogleSignIn();
 });
 
 if ('serviceWorker' in navigator) {

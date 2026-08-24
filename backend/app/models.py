@@ -28,7 +28,12 @@ class Instructor(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     phone = Column(String, nullable=False, server_default="")
-    hashed_password = Column(String, nullable=False)
+    # Nullable because an account created via "Sign in with Google" (see
+    # routers/auth.py's login_with_google) has no password at all — Google
+    # verifying the email IS the credential. security.verify_password()
+    # guards this: a None hashed_password always fails password login,
+    # rather than erroring or (worse) matching any input.
+    hashed_password = Column(String, nullable=True)
 
     bio = Column(Text, default="")
     address = Column(String, default="")
@@ -248,7 +253,9 @@ class Customer(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     phone = Column(String, nullable=False, server_default="")
-    hashed_password = Column(String, nullable=False)
+    # Nullable for the same reason as Instructor.hashed_password above —
+    # a Google-only account has no password.
+    hashed_password = Column(String, nullable=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     # What the customer actually typed on the availability step, geocoded

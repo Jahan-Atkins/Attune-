@@ -47,7 +47,12 @@ def hash_password(plain_password: str) -> str:
     return pwd_context.hash(plain_password)
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password(plain_password: str, hashed_password) -> bool:
+    """hashed_password is None for a Google-only account (see
+    Instructor/Customer.hashed_password) — always fails password login
+    for one, rather than erroring on passlib.verify(None)."""
+    if not hashed_password:
+        return False
     return pwd_context.verify(plain_password, hashed_password)
 
 

@@ -121,6 +121,17 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=8)
 
 
+class GoogleAuthRequest(BaseModel):
+    id_token: str  # the credential Google Identity Services hands the browser
+
+
+class PublicConfig(BaseModel):
+    """Non-secret, deploy-time config the frontend needs — see
+    google_auth.py's module docstring for why GOOGLE_CLIENT_ID is safe
+    to expose this way."""
+    google_client_id: Optional[str] = None
+
+
 # ---- Profile ----
 
 class ProfileOut(BaseModel):

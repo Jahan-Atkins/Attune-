@@ -152,14 +152,48 @@ Check the relevant one before assuming a feature doesn't exist yet.
   does. `occurrence_date` is the *only* place this app stores a real
   calendar date for a lesson; every other `LessonRequest` only ever
   stores a day-of-week.
-- Email notifications (`app/email.py`) use plain `print()`, not the
-  `logging` module — deliberately. A `logger.info()` version passed
-  every test (pytest's `caplog` overrides the level) but was silently
-  invisible in the real running app, since nothing here configures
-  Python logging and the root logger defaults to WARNING. If you touch
-  `send_email()`, keep using `print()` (or fix logging configuration
-  project-wide first) — don't reintroduce a notification that looks like
-  it works but never actually shows up anywhere.
+- **Email notifications (`app/email.py`) default to plain `print()`, not
+  the `logging` module — deliberately.** A `logger.info()` version
+  passed every test (pytest's `caplog` overrides the level) but was
+  silently invisible in the real running app, since nothing here
+  configures Python logging and the root logger defaults to WARNING.
+  `EMAIL_BACKEND=resend` (+ `RESEND_API_KEY`, both in `backend/.env`
+  locally / Render's Environment tab in production — never committed,
+  never pasted into chat) switches to real sending via Resend's API; every
+  environment that doesn't set `EMAIL_BACKEND` — including the whole test
+  suite — stays on the console backend, so nothing needs a real API key to
+  run. If you touch `send_email()`, keep the console default working (or
+  fix logging configuration project-wide first) — don't reintroduce a
+  notification that looks like it works but never actually shows up
+  anywhere. A failed Resend send prints an error rather than raising —
+  see `_send_via_resend`'s docstring for why a notification failure must
+  never break the primary action (confirming a match, cancelling a
+  series) that triggered it.
+- **"Sign in with Google" exists for Instructor and Customer accounts,
+  never for Admin.** `google_auth.py`'s `verify_google_id_token()` checks
+  a browser-side ID token against Google's public keys via the
+  `google-auth` library (security-critical verification — use that
+  library, don't hand-roll it) and needs `GOOGLE_CLIENT_ID` set (same
+  `backend/.env`/Render-Environment-tab pattern as `RESEND_API_KEY`; not
+  secret, but still not something to paste into chat). `POST
+  /api/auth/google` and `POST /api/customer/auth/google` (`auth.py`/
+  `customer_auth.py`'s `login_with_google`) find-or-create an account by
+  the verified email and issue the same JWT normal login does — Google
+  confirming the email IS the credential, so an existing password-based
+  account with a matching email signs straight in via Google too, no
+  separate linking step. There is **no** `/api/admin/auth/google` and
+  never should be — see `models.Admin`'s docstring on why there's no
+  public admin signup path at all; auto-creating an admin account by
+  email would defeat that. `GET /api/config` exposes `google_client_id`
+  (null when unconfigured) so both frontends' `initGoogleSignIn()` can
+  decide whether to render the button at all, instead of showing one
+  that would just fail.
+  - `Instructor.hashed_password`/`Customer.hashed_password` are
+    `nullable=True` for exactly this reason — a Google-only account has
+    no password. `security.verify_password()` guards this: a `None`
+    hashed_password always fails password login rather than erroring on
+    `passlib.verify(None)`. `Admin.hashed_password` stays `nullable=False`
+    — don't loosen it; that column has no Google-sign-in path to justify it.
 - **Login and forgot-password are rate-limited** (`app/rate_limit.py`) —
   5 attempts per 15 minutes, keyed by `(scope, client IP, identifier)` in
   a plain in-process dict, deliberately not Redis (this app runs as a
@@ -402,7 +436,7 @@ alembic upgrade head
 python seed.py           # see logins below
 python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 240 tests in backend/tests/ — run after any route change
+pytest                    # 253 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -426,6 +460,16 @@ the dropdown).
 
 ## Known gotchas
 
+- **This app now has two HTTP client libraries: `httpx` and `requests`.**
+  Not redundant on purpose — `httpx` is what this app's own code uses
+  everywhere (Nominatim, Resend); `requests` is a transitive dependency
+  `google-auth`'s standard transport (`google.auth.transport.requests`)
+  requires, and there's no dependency-free way around that without
+  hand-writing a custom transport for a security-critical verification
+  path, which isn't worth it. Don't "clean up" by removing `requests`
+  from `requirements.txt`, and don't use it directly elsewhere — new code
+  should still reach for `httpx`, matching every other external call in
+  this app.
 - **Nominatim geocoding is a real network call with no retry and an
   8-second timeout** (`geo.geocode_address()`) — if it's slow, rate-limited,
   or unreachable, the caller (`create_lesson_request` for a customer,
@@ -523,13 +567,15 @@ frontends, Filter/Sort on Open Sessions, a full Client Details page
 (location, recurring availability, itemized lesson list), and all seven
 parts of `PLATFORM-EXPANSION-ROADMAP.md`: contact info exchange, booking
 history, reviews & ratings, rebooking the same instructor, recurring
-weekly bookings, email notifications, and a full admin side
+weekly bookings, real email notifications (Resend, opt-in via
+`EMAIL_BACKEND` — console by default), and a full admin side
 (`frontend-admin/`, suspension, force-cancel, FAQ CRUD, metrics), a
 client-deletion approval workflow (instructor requests, admin
-approves/denies), and three launch-readiness items: rate limiting on
+approves/denies), three launch-readiness items: rate limiting on
 login/forgot-password, self-serve password reset for instructors and
 customers, and a reporting/blocking mechanism between matched
-instructors and customers. 240 passing tests cover all of it. See
+instructors and customers, and "Sign in with Google" for instructors and
+customers (never admin). 253 passing tests cover all of it. See
 `SCHEDULING-ROADMAP.md`,
 `REQUEST-CONFIRM-ROADMAP.md`, `CLIENT-DETAILS-ROADMAP.md`, and
 `PLATFORM-EXPANSION-ROADMAP.md` for how each piece got built, and

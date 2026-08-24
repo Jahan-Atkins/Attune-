@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas, security
 from ..database import get_db
 from ..email import send_email
+from ..google_auth import verify_google_id_token
 from ..rate_limit import check_rate_limit, record_failed_attempt, reset_attempts
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -58,6 +59,31 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
             headers={"WWW-Authenticate": "Bearer"},
         )
     reset_attempts("login-instructor", request, form_data.username)
+    token = security.create_access_token(instructor.id, subject_type="instructor")
+    return schemas.Token(access_token=token)
+
+
+@router.post("/google", response_model=schemas.Token)
+def login_with_google(payload: schemas.GoogleAuthRequest, db: Session = Depends(get_db)):
+    """Signs in an existing instructor account, or creates a new one, by
+    verified Google email — Google confirming the email IS the
+    credential here, same trust level as a verified password. See
+    google_auth.py's module docstring for why this route (and its
+    customer_auth.py twin) never exists for Admin accounts."""
+    try:
+        identity = verify_google_id_token(payload.id_token)
+    except RuntimeError:
+        raise HTTPException(status_code=501, detail="Google sign-in isn't configured on this server yet.")
+    if not identity:
+        raise HTTPException(status_code=401, detail="Could not verify that Google account.")
+
+    instructor = db.query(models.Instructor).filter(models.Instructor.email == identity["email"]).first()
+    if not instructor:
+        instructor = models.Instructor(name=identity["name"], email=identity["email"], phone="", hashed_password=None)
+        db.add(instructor)
+        db.commit()
+        db.refresh(instructor)
+
     token = security.create_access_token(instructor.id, subject_type="instructor")
     return schemas.Token(access_token=token)
 
