@@ -242,15 +242,25 @@ Check the relevant one before assuming a feature doesn't exist yet.
   standing weekly series would use the package's total price as a
   per-lesson price, which is wrong. Don't relax that guard without also
   fixing the price math.
-- **Package pricing is duration-scaled, not flat.** A `"single"`/`"pack4"`/
-  `"pack8"` price depends on the chosen lesson length:
-  `lesson_requests.py`'s `PACKAGE_DISCOUNT` (derived from
-  `bookings.py`'s legacy `PACKAGE_PRICING` at the 30-minute baseline, so
-  it reproduces those exact numbers at 30 min) multiplies
-  `DURATION_PRICING[duration]`. `frontend-customer/app.js`'s
+- **Package pricing is duration-scaled, not flat.** A
+  `"single"`/`"pack4"`/`"pack8"`/`"pack12"`/`"pack16"` price depends on the
+  chosen lesson length: `lesson_requests.py`'s `PACKAGE_DISCOUNT` (derived
+  from `bookings.py`'s legacy `PACKAGE_PRICING` at the 30-minute baseline,
+  computed generically for every key via a dict comprehension — not
+  hand-listed per package — so it reproduces those exact numbers at 30
+  min) multiplies `DURATION_PRICING[duration]`. `frontend-customer/app.js`'s
   `estimatedPackagePrice()` mirrors this formula client-side so the
   customer sees the real total *before* paying, not just on the match
   screen after submitting — if the backend formula changes, update both.
+  **`pack12`/`pack16` are deliberately priced with *no* per-session
+  discount** (`PACKAGE_PRICING["pack12"]["price"]` is just
+  `DURATION_PRICING[30] * 12`, same idea for `pack16` x 16) — unlike
+  `pack4`/`pack8`, which get a real discount baked into their baseline
+  price. This makes their derived `PACKAGE_DISCOUNT` come out to exactly
+  `1.0`, so `_price_for()` needs no special-casing: the same formula
+  produces "duration price x session count" for these two automatically.
+  Don't add a discount to pack12/pack16 without an explicit ask — the lack
+  of one is intentional, not an oversight.
 - **`ClientRequestOut.request_type` ("package"/"schedule") is not a proxy
   for which underlying model (`Booking` vs `LessonRequest`) a row is —
   use `.source` ("booking"/"lesson_request") for that instead.** Before
@@ -316,7 +326,7 @@ alembic upgrade head
 python seed.py           # see logins below
 python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 232 tests in backend/tests/ — run after any route change
+pytest                    # 233 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -427,7 +437,7 @@ workflow (instructor requests, admin approves/denies), and three
 launch-readiness items: rate limiting on login/forgot-password,
 self-serve password reset for instructors and customers, and a
 reporting/blocking mechanism between matched instructors and customers.
-232 passing tests cover all of it. See
+233 passing tests cover all of it. See
 `SCHEDULING-ROADMAP.md`,
 `REQUEST-CONFIRM-ROADMAP.md`, `CLIENT-DETAILS-ROADMAP.md`, and
 `PLATFORM-EXPANSION-ROADMAP.md` for how each piece got built, and

@@ -243,7 +243,7 @@ async function loadPackages() {
   listEl.innerHTML = '<p class="card-sub">Loading packages…</p>';
   try {
     packageCatalog = await apiFetch('/api/customer/bookings/packages');
-    const labels = { single: 'Single Session', pack4: '4-Session Package', pack8: '8-Session Package' };
+    const labels = { single: 'Single Session', pack4: '4-Session Package', pack8: '8-Session Package', pack12: '12-Session Package', pack16: '16-Session Package' };
     listEl.innerHTML = Object.entries(packageCatalog).map(([key, info]) => {
       const total = estimatedPackagePrice(key, selectedDuration);
       const perSession = Math.round(total / info.sessions);

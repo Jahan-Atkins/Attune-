@@ -322,7 +322,7 @@ class LessonRequest(Base):
     time-overlap match (has_overlap/has_overlap_any in matching.py), not
     just specialty + distance.
 
-    `package` ("single"|"pack4"|"pack8") + `sessions_total` replace the
+    `package` ("single"|"pack4"|"pack8"|"pack12"|"pack16") + `sessions_total` replace the
     old Booking-only package concept — every new customer request now
     goes through this model regardless of session count (see
     routers/bookings.py's module docstring for why Booking itself stays
@@ -362,7 +362,7 @@ class LessonRequest(Base):
     paid = Column(Boolean, default=False)  # flips True only when an instructor confirms
     notes = Column(Text, nullable=True)  # anything extra the customer wants the instructor to see
 
-    package = Column(String, nullable=True)  # "single" | "pack4" | "pack8" — null only on pre-migration legacy rows
+    package = Column(String, nullable=True)  # "single" | "pack4" | "pack8" | "pack12" | "pack16" — null only on pre-migration legacy rows
     sessions_total = Column(Integer, nullable=False, default=1, server_default="1")
     session_number = Column(Integer, nullable=False, default=1, server_default="1")  # 1 = broadcast/matched root; 2..N = later package sessions
     package_request_id = Column(Integer, ForeignKey("lesson_requests.id"), nullable=True)  # set only when session_number >= 2

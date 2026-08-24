@@ -15,6 +15,8 @@ def test_list_packages_is_public_pricing(client, customer_auth_headers):
     assert body["single"]["sessions"] == 1
     assert body["pack4"]["sessions"] == 4
     assert body["pack8"]["sessions"] == 8
+    assert body["pack12"]["sessions"] == 12
+    assert body["pack16"]["sessions"] == 16
 
 
 def test_no_booking_yet_is_404(client, customer_auth_headers):

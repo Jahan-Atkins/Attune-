@@ -30,10 +30,15 @@ from ..security import get_current_customer
 
 router = APIRouter(prefix="/api/customer/bookings", tags=["bookings"])
 
+# pack12/pack16 are priced with no per-session discount, unlike pack4/pack8
+# above — just DURATION_PRICING[30] x sessions, so lesson_requests.py's
+# derived PACKAGE_DISCOUNT works out to exactly 1.0 for both.
 PACKAGE_PRICING = {
     "single": {"sessions": 1, "price": 65},
     "pack4": {"sessions": 4, "price": 220},
     "pack8": {"sessions": 8, "price": 400},
+    "pack12": {"sessions": 12, "price": 780},
+    "pack16": {"sessions": 16, "price": 1040},
 }
 
 

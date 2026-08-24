@@ -105,6 +105,22 @@ def test_price_matches_selected_package(client, customer_auth_headers):
     assert pack8["sessions_total"] == 8
 
 
+def test_pack12_and_pack16_have_no_per_session_discount(client, customer_auth_headers):
+    # Unlike pack4/pack8, pack12/pack16 are priced with zero discount:
+    # duration price x session count, exactly, at any duration.
+    pack12 = client.post(
+        "/api/customer/lesson-requests", json=_request_payload(package="pack12", duration_minutes=30, windows=[_window(day=2)]), headers=customer_auth_headers
+    ).json()
+    assert pack12["amount_paid"] == 65 * 12
+    assert pack12["sessions_total"] == 12
+
+    pack16 = client.post(
+        "/api/customer/lesson-requests", json=_request_payload(package="pack16", duration_minutes=90, windows=[_window(day=3)]), headers=customer_auth_headers
+    ).json()
+    assert pack16["amount_paid"] == 160 * 16
+    assert pack16["sessions_total"] == 16
+
+
 def test_lesson_request_stores_notes(client, customer_auth_headers):
     res = client.post(
         "/api/customer/lesson-requests",
