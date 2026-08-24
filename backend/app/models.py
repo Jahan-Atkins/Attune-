@@ -15,7 +15,7 @@ instead of two disconnected demos.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, Float, Boolean, Text, ForeignKey, DateTime, UniqueConstraint, func
+from sqlalchemy import Column, Integer, String, Float, Boolean, Text, ForeignKey, DateTime, UniqueConstraint, func, or_
 from sqlalchemy.orm import relationship, object_session
 from .database import Base
 from . import geo
@@ -315,18 +315,37 @@ class AvailabilityBlock(Base):
 
 class LessonRequest(Base):
     """
-    A customer's request for one scheduled lesson (30/45/60/75/90
-    minutes, in 15-minute steps) at a specific day/time. Same
-    pending -> broadcast -> instructor-confirms lifecycle as Booking
-    (see that model's docstring) — the only difference here is the
-    broadcast/visibility query also requires a time-overlap match
-    (has_overlap in matching.py), not just specialty + distance.
+    A customer's request for a scheduled lesson (30/45/60/75/90 minutes,
+    in 15-minute steps). Same pending -> broadcast -> instructor-confirms
+    lifecycle as Booking (see that model's docstring) — the only
+    difference here is the broadcast/visibility query also requires a
+    time-overlap match (has_overlap/has_overlap_any in matching.py), not
+    just specialty + distance.
 
-    This stays a separate model from Booking rather than an extension of
-    it: Booking is "pick a package, get matched whenever" with no time
-    component, while a LessonRequest is "I want a lesson in this specific
-    window" — different enough shapes that bolting time/location fields
-    onto Booking would leave most of them null for the package flow.
+    `package` ("single"|"pack4"|"pack8") + `sessions_total` replace the
+    old Booking-only package concept — every new customer request now
+    goes through this model regardless of session count (see
+    routers/bookings.py's module docstring for why Booking itself stays
+    read-only rather than being deleted). `session_number`/
+    `package_request_id` track a multi-session package's sessions: the
+    row with `session_number == 1` is the one that actually goes through
+    the broadcast/confirm lifecycle below; sessions 2..N are scheduled
+    afterward one at a time against the now-fixed instructor (see
+    routers/lesson_requests.py's schedule_next_session), created
+    directly as "matched" the same way a RecurringSeries occurrence is,
+    and point back at the root via `package_request_id`.
+
+    `requested_day`/`requested_start_time`/`requested_end_time` are
+    nullable and mean something different than they used to: a customer
+    now submits a *set* of candidate windows (see
+    LessonRequestAvailabilityWindow below), so there's no single "the"
+    window until a specific instructor actually confirms one — these
+    three columns stay NULL while pending and get populated at match
+    time with whichever submitted window matched, same "don't store what
+    isn't real yet" spirit as this file's other computed/deferred
+    fields. A row created directly as "matched" (a RecurringSeries
+    occurrence, or a schedule_next_session row) populates them
+    immediately, same as before.
     """
     __tablename__ = "lesson_requests"
 
@@ -343,10 +362,16 @@ class LessonRequest(Base):
     paid = Column(Boolean, default=False)  # flips True only when an instructor confirms
     notes = Column(Text, nullable=True)  # anything extra the customer wants the instructor to see
 
-    # The window the customer proposed.
-    requested_day = Column(Integer, nullable=False)  # 0=Monday ... 6=Sunday
-    requested_start_time = Column(String, nullable=False)  # "HH:MM"
-    requested_end_time = Column(String, nullable=False)  # "HH:MM"
+    package = Column(String, nullable=True)  # "single" | "pack4" | "pack8" — null only on pre-migration legacy rows
+    sessions_total = Column(Integer, nullable=False, default=1, server_default="1")
+    session_number = Column(Integer, nullable=False, default=1, server_default="1")  # 1 = broadcast/matched root; 2..N = later package sessions
+    package_request_id = Column(Integer, ForeignKey("lesson_requests.id"), nullable=True)  # set only when session_number >= 2
+
+    # The window that actually matched — NULL while pending on a
+    # multi-window request. See the class docstring.
+    requested_day = Column(Integer, nullable=True)  # 0=Monday ... 6=Sunday
+    requested_start_time = Column(String, nullable=True)  # "HH:MM"
+    requested_end_time = Column(String, nullable=True)  # "HH:MM"
 
     # The actual confirmed slot, set only once matched.
     matched_start_time = Column(String, nullable=True)
@@ -367,6 +392,57 @@ class LessonRequest(Base):
 
     customer = relationship("Customer", back_populates="lesson_requests")
     instructor = relationship("Instructor", back_populates="matched_lesson_requests", foreign_keys=[instructor_id])
+    # The set of candidate windows submitted with this request — see
+    # LessonRequestAvailabilityWindow. Ordered earliest-first so "first
+    # window that has room" (matching.has_overlap_any) means "earliest
+    # window that has room" for free, no sorting needed at call sites.
+    availability_windows = relationship(
+        "LessonRequestAvailabilityWindow", back_populates="lesson_request",
+        cascade="all, delete-orphan",
+        order_by="LessonRequestAvailabilityWindow.day_of_week, LessonRequestAvailabilityWindow.start_time",
+    )
+
+    @property
+    def sessions_scheduled(self):
+        """How many of this package's sessions are matched so far —
+        meaningful only on the session_number==1 root row (None
+        otherwise, since a child row isn't itself a package). Computed
+        fresh via object_session(), same pattern as Instructor.average_rating."""
+        if self.session_number != 1:
+            return None
+        session = object_session(self)
+        if session is None:
+            return None
+        return (
+            session.query(LessonRequest)
+            .filter(
+                or_(LessonRequest.id == self.id, LessonRequest.package_request_id == self.id),
+                LessonRequest.status == "matched",
+            )
+            .count()
+        )
+
+
+class LessonRequestAvailabilityWindow(Base):
+    """
+    One day+window entry in the set of availability a customer submitted
+    with a single LessonRequest — mirrors AvailabilityBlock's shape
+    exactly (day_of_week 0=Monday..6=Sunday, start_time/end_time
+    "HH:MM"), just scoped to one request instead of one instructor's
+    whole week. A customer submits several of these per request (e.g.
+    "Mon 9-11am, Wed 2-4pm, Fri 9am-noon"); matching.has_overlap_any()
+    tries each one in order against a candidate instructor's own
+    AvailabilityBlock list and returns the first that fits.
+    """
+    __tablename__ = "lesson_request_availability_windows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_request_id = Column(Integer, ForeignKey("lesson_requests.id"), nullable=False)
+    day_of_week = Column(Integer, nullable=False)
+    start_time = Column(String, nullable=False)
+    end_time = Column(String, nullable=False)
+
+    lesson_request = relationship("LessonRequest", back_populates="availability_windows", foreign_keys=[lesson_request_id])
 
 
 class RecurringSeries(Base):

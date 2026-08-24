@@ -1,22 +1,16 @@
-from .conftest import signup_instructor_with_specialty
+from .conftest import create_booking_row, signup_customer, signup_instructor_with_specialty
 
 CARD = {"card_name": "Jordan Lee", "card_number": "4242 4242 4242 4242", "card_expiry": "12/28", "card_cvc": "123"}
 CITY = "New York, NY"
 
 
-def _booking_payload(**overrides):
-    payload = {"specialty": "yoga", "package": "single", "city": CITY, **CARD}
-    payload.update(overrides)
-    return payload
-
-
 def _make_matched_booking(client, customer_auth_headers, email="reviewed_instructor@example.com", name="Reviewed Instructor"):
-    """Signs up an instructor, submits a booking, and confirms it —
+    """Signs up an instructor, seeds a (legacy, directly-inserted —
+    Booking has no create route anymore) booking, and confirms it —
     returns (instructor_headers, booking_id)."""
     token = signup_instructor_with_specialty(client, email=email, specialty="yoga", name=name)
     headers = {"Authorization": f"Bearer {token}"}
-    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(city=CITY)
     client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers)
     return headers, booking_id
 
@@ -28,8 +22,7 @@ def test_create_review_requires_customer_auth(client):
 
 def test_cannot_review_a_pending_booking(client, customer_auth_headers):
     signup_instructor_with_specialty(client, email="pending_review@example.com", specialty="yoga")
-    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(city=CITY)
 
     review_res = client.post(
         "/api/customer/reviews", json={"booking_id": booking_id, "rating": 5}, headers=customer_auth_headers,
@@ -57,8 +50,8 @@ def test_create_review_on_matched_lesson_request(client, customer_auth_headers):
     headers = {"Authorization": f"Bearer {token}"}
     client.post("/api/availability", json={"day_of_week": 1, "start_time": "08:00", "end_time": "12:00"}, headers=headers)
     res = client.post("/api/customer/lesson-requests", json={
-        "specialty": "yoga", "city": CITY, "duration_minutes": 30,
-        "requested_day": 1, "requested_start_time": "09:00", "requested_end_time": "11:00", **CARD,
+        "specialty": "yoga", "package": "single", "city": CITY, "duration_minutes": 30,
+        "availability_windows": [{"day_of_week": 1, "start_time": "09:00", "end_time": "11:00"}], **CARD,
     }, headers=customer_auth_headers)
     lesson_request_id = res.json()["id"]
     client.put(f"/api/client-requests/lesson-requests/{lesson_request_id}/confirm", headers=headers)
@@ -81,9 +74,7 @@ def test_cannot_review_same_booking_twice(client, customer_auth_headers):
 def test_cannot_review_another_customers_booking(client, customer_auth_headers):
     _, booking_id = _make_matched_booking(client, customer_auth_headers, email="not_yours@example.com")
 
-    other_token = client.post("/api/customer/auth/signup", json={
-        "name": "Other Customer", "email": "other_reviewer@example.com", "phone": "555-010-5555", "password": "custpass123",
-    }).json()["access_token"]
+    other_token = signup_customer(client, email="other_reviewer@example.com")
     other_headers = {"Authorization": f"Bearer {other_token}"}
 
     res = client.post("/api/customer/reviews", json={"booking_id": booking_id, "rating": 1}, headers=other_headers)
@@ -137,8 +128,7 @@ def test_average_rating_appears_on_matched_instructor(client, customer_auth_head
 
 def test_no_reviews_yet_means_null_average_not_zero(client, customer_auth_headers):
     signup_instructor_with_specialty(client, email="no_reviews_yet@example.com", specialty="yoga")
-    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(city=CITY)
     token = client.post("/api/auth/login", data={"username": "no_reviews_yet@example.com", "password": "testpass123"}).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers)

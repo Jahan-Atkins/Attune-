@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.database import Base, engine, SessionLocal
-from app import models, rate_limit
+from app import geo, models, rate_limit
 from app.security import hash_password
 
 
@@ -139,3 +139,34 @@ def create_admin_and_login(client, email="admin@example.com", password="adminpas
 def admin_auth_headers(client):
     token = create_admin_and_login(client)
     return {"Authorization": f"Bearer {token}"}
+
+
+def create_booking_row(customer_email="customer@example.com", instructor_id=None, city=None, **overrides):
+    """`Booking` has no public create route anymore (see
+    routers/bookings.py's module docstring — every new customer request
+    goes through lesson_requests.py now) but the whole confirm/admin/
+    review side of it stays live for whatever existed at cutover, and
+    deserves real test coverage. Inserts a row directly, same idea as
+    create_admin_and_login above for a model with no public create route.
+    `city` (optional) sets the customer's lat/lng the same way the old
+    create route used to, for distance-based visibility tests."""
+    db = SessionLocal()
+    try:
+        customer = db.query(models.Customer).filter(models.Customer.email == customer_email).first()
+        if city:
+            coords = geo.CITY_BY_NAME[city]
+            customer.latitude = coords["lat"]
+            customer.longitude = coords["lng"]
+        defaults = dict(
+            customer_id=customer.id, instructor_id=instructor_id,
+            specialty="yoga", package="single", sessions_total=1, amount_paid=65,
+            paid=False, status="pending",
+        )
+        defaults.update(overrides)
+        booking = models.Booking(**defaults)
+        db.add(booking)
+        db.commit()
+        db.refresh(booking)
+        return booking.id
+    finally:
+        db.close()

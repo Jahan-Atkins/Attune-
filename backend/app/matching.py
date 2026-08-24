@@ -61,6 +61,29 @@ def has_overlap(
     return None
 
 
+def has_overlap_any(
+    windows: List[AvailabilityTuple],
+    availability_blocks: List[AvailabilityTuple],
+    duration_minutes: int,
+) -> Optional[Tuple[AvailabilityTuple, Tuple[str, str]]]:
+    """
+    Tries has_overlap() once per candidate window, in the order given,
+    and returns the first that fits: ((day, window_start, window_end),
+    (matched_start, matched_end)). None if no window fits any block.
+
+    Tie-break is simply "first in `windows`" — callers are responsible
+    for ordering. LessonRequest.availability_windows is already loaded
+    earliest-day/time-first (see that relationship's order_by), so
+    "first fit" already means "earliest fit" for anything sourced from
+    the ORM relationship.
+    """
+    for day, start, end in windows:
+        result = has_overlap(day, start, end, duration_minutes, availability_blocks)
+        if result is not None:
+            return (day, start, end), result
+    return None
+
+
 def within_travel_distance(
     instructor_max_km: Optional[float],
     instructor_lat: Optional[float],

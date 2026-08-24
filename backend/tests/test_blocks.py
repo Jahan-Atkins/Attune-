@@ -6,10 +6,21 @@ Reuses test_reports.py's _make_matched_pair to get a real matched pair
 to block, since blocking makes the most sense once two people already
 have each other's contact info.
 """
+from .conftest import add_availability
 from .test_reports import _make_matched_pair
 
 CARD = {"card_name": "Jordan Lee", "card_number": "4242 4242 4242 4242", "card_expiry": "12/28", "card_cvc": "123"}
 CITY = "New York, NY"
+
+
+def _lesson_payload(**overrides):
+    payload = {
+        "specialty": "yoga", "package": "single", "city": CITY, "duration_minutes": 30,
+        "availability_windows": [{"day_of_week": 1, "start_time": "09:00", "end_time": "11:00"}],
+        **CARD,
+    }
+    payload.update(overrides)
+    return payload
 
 
 # ---- auth ----
@@ -56,12 +67,11 @@ def test_blocking_instructor_is_idempotent(client, customer_auth_headers):
 
 def test_blocked_instructor_no_longer_sees_customers_new_requests(client, customer_auth_headers):
     instructor_headers, instructor_id, _ = _make_matched_pair(client, customer_auth_headers, email="blocker_test@example.com")
+    add_availability(client, instructor_headers, 1, "08:00", "12:00")
     client.post("/api/customer/blocks", json={"instructor_id": instructor_id}, headers=customer_auth_headers)
 
     # A brand new request from the same (now-blocking) customer.
-    client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": CITY, **CARD,
-    }, headers=customer_auth_headers)
+    client.post("/api/customer/lesson-requests", json=_lesson_payload(), headers=customer_auth_headers)
 
     visible = client.get("/api/client-requests", headers=instructor_headers).json()
     assert visible == []
@@ -69,12 +79,11 @@ def test_blocked_instructor_no_longer_sees_customers_new_requests(client, custom
 
 def test_unblocking_restores_visibility(client, customer_auth_headers):
     instructor_headers, instructor_id, _ = _make_matched_pair(client, customer_auth_headers, email="unblock_test@example.com")
+    add_availability(client, instructor_headers, 1, "08:00", "12:00")
     client.post("/api/customer/blocks", json={"instructor_id": instructor_id}, headers=customer_auth_headers)
     client.delete(f"/api/customer/blocks/{instructor_id}", headers=customer_auth_headers)
 
-    client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": CITY, **CARD,
-    }, headers=customer_auth_headers)
+    client.post("/api/customer/lesson-requests", json=_lesson_payload(), headers=customer_auth_headers)
 
     visible = client.get("/api/client-requests", headers=instructor_headers).json()
     assert len(visible) == 1
@@ -84,9 +93,9 @@ def test_blocking_prevents_book_again_with_that_instructor(client, customer_auth
     instructor_headers, instructor_id, _ = _make_matched_pair(client, customer_auth_headers, email="rebook_blocked@example.com")
     client.post("/api/customer/blocks", json={"instructor_id": instructor_id}, headers=customer_auth_headers)
 
-    res = client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": CITY, "preferred_instructor_id": instructor_id, **CARD,
-    }, headers=customer_auth_headers)
+    res = client.post(
+        "/api/customer/lesson-requests", json=_lesson_payload(preferred_instructor_id=instructor_id), headers=customer_auth_headers,
+    )
     assert res.status_code == 400
 
 
@@ -127,11 +136,10 @@ def test_instructor_block_also_hides_that_customers_requests_from_them(client, c
     """A block is symmetric in effect regardless of which side initiated
     it — see models.Block's docstring."""
     instructor_headers, _, client_id = _make_matched_pair(client, customer_auth_headers, email="symmetric_test@example.com")
+    add_availability(client, instructor_headers, 1, "08:00", "12:00")
     client.post("/api/profile/blocks", json={"client_id": client_id}, headers=instructor_headers)
 
-    client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": CITY, **CARD,
-    }, headers=customer_auth_headers)
+    client.post("/api/customer/lesson-requests", json=_lesson_payload(), headers=customer_auth_headers)
 
     visible = client.get("/api/client-requests", headers=instructor_headers).json()
     assert visible == []

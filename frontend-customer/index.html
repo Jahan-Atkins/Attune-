@@ -119,7 +119,7 @@
   <section class="screen" id="screen-specialty">
     <div class="wizard-header">
       <button class="back-link" onclick="goHome()">← Back</button>
-      <p class="step-label">Step 1 of 3</p>
+      <p class="step-label">Step 1 of 4</p>
     </div>
     <h2 class="step-title">What are you looking for?</h2>
     <div class="option-grid">
@@ -140,46 +140,49 @@
     </div>
   </section>
 
-  <!-- ============ BOOKING TYPE ============ -->
-  <section class="screen" id="screen-booking-type">
-    <div class="wizard-header">
-      <button class="back-link" onclick="goToScreen('specialty')">← Back</button>
-      <p class="step-label">Step 2 of 3</p>
-    </div>
-    <h2 class="step-title">How would you like to book?</h2>
-    <div class="option-grid">
-      <button class="option-card" onclick="chooseBookingType('package')">
-        <div class="option-icon option-icon-sage">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>
-        </div>
-        <h3>Choose a Package</h3>
-        <p>A single session or multi-session package — we'll send your request to nearby instructors who offer it.</p>
-      </button>
-      <button class="option-card" onclick="chooseBookingType('schedule')">
-        <div class="option-icon option-icon-brass">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01"/></svg>
-        </div>
-        <h3>Schedule a Lesson</h3>
-        <p>Pick a day, time window, and lesson length — we'll send your request to nearby instructors who can fit it.</p>
-      </button>
-    </div>
-  </section>
-
   <!-- ============ PACKAGE ============ -->
   <section class="screen" id="screen-package">
     <div class="wizard-header">
-      <button class="back-link" onclick="goToScreen('booking-type')">← Back</button>
-      <p class="step-label">Step 3 of 3</p>
+      <button class="back-link" onclick="goToScreen('specialty')">← Back</button>
+      <p class="step-label">Step 2 of 4</p>
     </div>
     <h2 class="step-title">Choose a package</h2>
     <div id="package-list" class="package-list"></div>
   </section>
 
+  <!-- ============ AVAILABILITY ============ -->
+  <section class="screen" id="screen-availability">
+    <div class="wizard-header">
+      <button class="back-link" onclick="goToScreen('package')">← Back</button>
+      <p class="step-label">Step 3 of 4</p>
+    </div>
+    <h2 class="step-title">When are you available?</h2>
+    <p class="card-sub" style="max-width:480px; margin:0 auto 18px;">Add every day/time window that works for you — we'll match you with an instructor who's free in at least one of them.</p>
+
+    <p class="field-label" style="text-align:center;">Lesson length</p>
+    <div class="window-grid" id="avail-duration-picker"></div>
+
+    <p class="field-label" style="text-align:center;">Day of week</p>
+    <div class="day-picker" id="avail-day-picker"></div>
+
+    <p class="field-label" style="text-align:center;">Time window</p>
+    <div class="window-grid" id="avail-window-picker"></div>
+
+    <div class="schedule-panel">
+      <button class="btn btn-outline btn-block" type="button" onclick="addAvailabilityWindow()">+ Add This Window</button>
+      <div id="avail-window-list" style="margin-top:14px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+      <label class="field-label" style="margin-top:18px;">Your city</label>
+      <select class="field-select" id="avail-city"></select>
+      <div id="avail-error" class="form-error" style="display:none; margin-top:12px;"></div>
+      <button class="btn btn-primary btn-block" style="margin-top:18px;" onclick="submitAvailabilitySelection()">Continue</button>
+    </div>
+  </section>
+
   <!-- ============ PAYMENT ============ -->
   <section class="screen" id="screen-payment">
     <div class="wizard-header">
-      <button class="back-link" onclick="goToScreen('package')">← Back</button>
-      <p class="step-label">Final step</p>
+      <button class="back-link" onclick="goToScreen('availability')">← Back</button>
+      <p class="step-label">Step 4 of 4</p>
     </div>
     <div class="card wizard-card">
       <h2 class="card-title">Your details</h2>
@@ -187,8 +190,6 @@
       <p class="card-sub" id="payment-summary"></p>
       <div id="payment-error" class="form-error" style="display:none;"></div>
       <form id="payment-form" onsubmit="submitPayment(event)">
-        <label class="field-label">Your city</label>
-        <select class="field-select" id="pay-city" required></select>
         <label class="field-label">Anything else your instructor should know?</label>
         <textarea class="field-textarea" id="pay-notes" placeholder="Optional — injuries, experience level, preferences…"></textarea>
         <label class="field-label" style="margin-top:20px;">Name on card</label>
@@ -206,64 +207,6 @@
           </div>
         </div>
         <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;" id="pay-submit-btn">Send Request</button>
-      </form>
-    </div>
-  </section>
-
-  <!-- ============ SCHEDULE ============ -->
-  <section class="screen" id="screen-schedule">
-    <div class="wizard-header">
-      <button class="back-link" onclick="goToScreen('booking-type')">← Back</button>
-      <p class="step-label">Step 3 of 3</p>
-    </div>
-    <h2 class="step-title">Pick a day, time, and location</h2>
-
-    <p class="field-label" style="text-align:center;">Day of week</p>
-    <div class="day-picker" id="schedule-day-picker"></div>
-
-    <p class="field-label" style="text-align:center;">Lesson length</p>
-    <div class="window-grid" id="schedule-duration-picker"></div>
-
-    <p class="field-label" style="text-align:center;">Time window <span style="font-weight:400; text-transform:none; letter-spacing:0;">(we'll fit your lesson somewhere inside it)</span></p>
-    <div class="window-grid" id="schedule-window-picker"></div>
-
-    <div class="schedule-panel">
-      <label class="field-label" style="margin-top:0;">Your city</label>
-      <select class="field-select" id="schedule-city"></select>
-      <div id="schedule-error" class="form-error" style="display:none; margin-top:12px;"></div>
-      <button class="btn btn-primary btn-block" style="margin-top:18px;" onclick="submitScheduleSelection()">Continue</button>
-    </div>
-  </section>
-
-  <!-- ============ SCHEDULE PAYMENT ============ -->
-  <section class="screen" id="screen-schedule-payment">
-    <div class="wizard-header">
-      <button class="back-link" onclick="goToScreen('schedule')">← Back</button>
-      <p class="step-label">Final step</p>
-    </div>
-    <div class="card wizard-card">
-      <h2 class="card-title">Payment</h2>
-      <div class="mock-banner">Your card is only charged once an instructor confirms your request — not now.</div>
-      <p class="card-sub" id="schedule-payment-summary"></p>
-      <div id="schedule-payment-error" class="form-error" style="display:none;"></div>
-      <form id="schedule-payment-form" onsubmit="submitSchedulePayment(event)">
-        <label class="field-label">Anything else your instructor should know?</label>
-        <textarea class="field-textarea" id="spay-notes" placeholder="Optional — injuries, experience level, preferences…"></textarea>
-        <label class="field-label" style="margin-top:20px;">Name on card</label>
-        <input class="field-input" id="spay-name" required placeholder="Jordan Lee">
-        <label class="field-label">Card number</label>
-        <input class="field-input" id="spay-number" required placeholder="4242 4242 4242 4242" inputmode="numeric">
-        <div class="field-row">
-          <div>
-            <label class="field-label">Expiry</label>
-            <input class="field-input" id="spay-expiry" required placeholder="MM/YY">
-          </div>
-          <div>
-            <label class="field-label">CVC</label>
-            <input class="field-input" id="spay-cvc" required placeholder="123" inputmode="numeric">
-          </div>
-        </div>
-        <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px;" id="spay-submit-btn">Send Request</button>
       </form>
     </div>
   </section>

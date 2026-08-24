@@ -1,6 +1,7 @@
 from .conftest import (
     add_availability,
     create_admin_and_login,
+    create_booking_row,
     signup_instructor_with_specialty,
 )
 
@@ -92,11 +93,12 @@ def test_suspended_instructor_disappears_from_broadcast(client, customer_auth_he
 
     client.put(f"/api/admin/instructors/{instructor_id}/suspend", json={}, headers=admin_auth_headers)
 
-    booking = client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": "New York, NY", **CARD,
+    lesson_request = client.post("/api/customer/lesson-requests", json={
+        "specialty": "yoga", "package": "single", "city": "New York, NY", "duration_minutes": 30,
+        "availability_windows": [{"day_of_week": TUESDAY, "start_time": "09:00", "end_time": "11:00"}], **CARD,
     }, headers=customer_auth_headers).json()
     # No active, non-suspended yoga instructor exists in this isolated test DB.
-    assert booking["status"] == "unmatched"
+    assert lesson_request["status"] == "unmatched"
     assert client.get("/api/client-requests", headers=instructor_headers).json() == []
 
 
@@ -126,44 +128,40 @@ def test_get_customer_detail_404_for_unknown_id(client, admin_auth_headers):
 # ---- bookings / lesson requests ----
 
 def test_admin_sees_bookings_across_all_customers(client, customer_auth_headers, admin_auth_headers):
-    signup_instructor_with_specialty(client, email="admin_bookings@example.com", specialty="yoga")
-    booking = client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": "New York, NY", **CARD,
-    }, headers=customer_auth_headers).json()
+    # Booking has no create route anymore — seeded directly (see
+    # routers/bookings.py's module docstring), the admin views over it
+    # stay live and tested.
+    booking_id = create_booking_row()
 
     res = client.get("/api/admin/bookings", headers=admin_auth_headers)
     assert res.status_code == 200
-    assert any(b["id"] == booking["id"] and b["customer_name"] == "Test Customer" for b in res.json())
+    assert any(b["id"] == booking_id and b["customer_name"] == "Test Customer" for b in res.json())
 
 
 def test_admin_force_cancel_booking(client, customer_auth_headers, admin_auth_headers):
-    booking = client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": "New York, NY", **CARD,
-    }, headers=customer_auth_headers).json()
+    booking_id = create_booking_row()
 
-    res = client.put(f"/api/admin/bookings/{booking['id']}/force-cancel", headers=admin_auth_headers)
+    res = client.put(f"/api/admin/bookings/{booking_id}/force-cancel", headers=admin_auth_headers)
     assert res.status_code == 200
     assert res.json()["status"] == "cancelled_by_admin"
 
-    again = client.put(f"/api/admin/bookings/{booking['id']}/force-cancel", headers=admin_auth_headers)
+    again = client.put(f"/api/admin/bookings/{booking_id}/force-cancel", headers=admin_auth_headers)
     assert again.status_code == 400
 
 
 def test_admin_filters_bookings_by_status(client, customer_auth_headers, admin_auth_headers):
-    signup_instructor_with_specialty(client, email="admin_filter@example.com", specialty="sound_bath")
-    client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": "New York, NY", **CARD,
-    }, headers=customer_auth_headers)
+    create_booking_row(status="unmatched")
 
     res = client.get("/api/admin/bookings?status=unmatched", headers=admin_auth_headers)
     assert res.status_code == 200
+    assert len(res.json()) >= 1
     assert all(b["status"] == "unmatched" for b in res.json())
 
 
 def test_admin_force_cancel_lesson_request(client, customer_auth_headers, admin_auth_headers):
     lr = client.post("/api/customer/lesson-requests", json={
-        "specialty": "yoga", "city": "New York, NY", "duration_minutes": 30,
-        "requested_day": TUESDAY, "requested_start_time": "09:00", "requested_end_time": "11:00", **CARD,
+        "specialty": "yoga", "package": "single", "city": "New York, NY", "duration_minutes": 30,
+        "availability_windows": [{"day_of_week": TUESDAY, "start_time": "09:00", "end_time": "11:00"}], **CARD,
     }, headers=customer_auth_headers).json()
 
     res = client.put(f"/api/admin/lesson-requests/{lr['id']}/force-cancel", headers=admin_auth_headers)
@@ -204,9 +202,7 @@ def test_admin_faq_update_404_for_unknown_id(client, admin_auth_headers):
 
 def test_metrics_shape_and_counts(client, customer_auth_headers, admin_auth_headers):
     signup_instructor_with_specialty(client, email="admin_metrics@example.com", specialty="yoga")
-    client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": "New York, NY", **CARD,
-    }, headers=customer_auth_headers)
+    create_booking_row()
 
     res = client.get("/api/admin/metrics", headers=admin_auth_headers)
     assert res.status_code == 200

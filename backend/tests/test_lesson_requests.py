@@ -4,14 +4,17 @@ CARD = {"card_name": "Jordan Lee", "card_number": "4242 4242 4242 4242", "card_e
 TUESDAY = 1
 
 
-def _request_payload(**overrides):
+def _window(day=TUESDAY, start="09:00", end="11:00"):
+    return {"day_of_week": day, "start_time": start, "end_time": end}
+
+
+def _request_payload(package="single", windows=None, **overrides):
     payload = {
         "specialty": "yoga",
+        "package": package,
         "city": "New York, NY",
         "duration_minutes": 30,
-        "requested_day": TUESDAY,
-        "requested_start_time": "09:00",
-        "requested_end_time": "11:00",
+        "availability_windows": windows if windows is not None else [_window()],
         **CARD,
     }
     payload.update(overrides)
@@ -33,15 +36,25 @@ def test_reject_unknown_specialty(client, customer_auth_headers):
     assert res.status_code == 400
 
 
+def test_reject_unknown_package(client, customer_auth_headers):
+    res = client.post("/api/customer/lesson-requests", json=_request_payload(package="pack20"), headers=customer_auth_headers)
+    assert res.status_code == 400
+
+
 def test_reject_unknown_city(client, customer_auth_headers):
     res = client.post("/api/customer/lesson-requests", json=_request_payload(city="Nowhere, XX"), headers=customer_auth_headers)
     assert res.status_code == 400
 
 
-def test_reject_invalid_time_range(client, customer_auth_headers):
+def test_reject_no_availability_windows(client, customer_auth_headers):
+    res = client.post("/api/customer/lesson-requests", json=_request_payload(windows=[]), headers=customer_auth_headers)
+    assert res.status_code == 400
+
+
+def test_reject_invalid_time_range_in_a_window(client, customer_auth_headers):
     res = client.post(
         "/api/customer/lesson-requests",
-        json=_request_payload(requested_start_time="11:00", requested_end_time="09:00"),
+        json=_request_payload(windows=[_window(start="11:00", end="09:00")]),
         headers=customer_auth_headers,
     )
     assert res.status_code == 400
@@ -71,9 +84,25 @@ def test_list_durations_is_public_pricing(client, customer_auth_headers):
     assert body["90"] / 90 < body["30"] / 30
 
 
-def test_price_scales_with_duration(client, customer_auth_headers):
-    res = client.post("/api/customer/lesson-requests", json=_request_payload(duration_minutes=60), headers=customer_auth_headers)
+def test_price_scales_with_duration_for_a_single(client, customer_auth_headers):
+    res = client.post("/api/customer/lesson-requests", json=_request_payload(package="single", duration_minutes=60), headers=customer_auth_headers)
     assert res.json()["amount_paid"] == 115
+
+
+def test_price_matches_selected_package(client, customer_auth_headers):
+    # At the 30-minute baseline, package pricing reproduces the legacy
+    # PACKAGE_PRICING numbers exactly: single=$65, pack4=$220, pack8=$400.
+    single = client.post("/api/customer/lesson-requests", json=_request_payload(package="single", duration_minutes=30), headers=customer_auth_headers).json()
+    assert single["amount_paid"] == 65
+    assert single["sessions_total"] == 1
+
+    pack4 = client.post("/api/customer/lesson-requests", json=_request_payload(package="pack4", duration_minutes=30, windows=[_window(day=2)]), headers=customer_auth_headers).json()
+    assert pack4["amount_paid"] == 220
+    assert pack4["sessions_total"] == 4
+
+    pack8 = client.post("/api/customer/lesson-requests", json=_request_payload(package="pack8", duration_minutes=30, windows=[_window(day=3)]), headers=customer_auth_headers).json()
+    assert pack8["amount_paid"] == 400
+    assert pack8["sessions_total"] == 8
 
 
 def test_lesson_request_stores_notes(client, customer_auth_headers):
@@ -98,17 +127,34 @@ def test_lesson_request_starts_pending_when_a_feasible_instructor_exists(client,
     assert body["instructor"] is None
     assert body["paid"] is False
     assert body["matched_start_time"] is None
+    assert body["requested_day"] is None  # not set until a specific instructor confirms — see models.LessonRequest
 
 
 def test_no_feasible_instructor_anywhere_is_unmatched_not_a_crash(client, customer_auth_headers):
     signup_instructor_with_specialty(client, email="noavail@example.com", specialty="yoga")
     # Instructor exists and offers yoga, but has zero availability blocks —
-    # no requested window could ever overlap, so this is a true dead end.
+    # no submitted window could ever overlap, so this is a true dead end.
     res = client.post("/api/customer/lesson-requests", json=_request_payload(), headers=customer_auth_headers)
     assert res.status_code == 201
     body = res.json()
     assert body["status"] == "unmatched"
     assert body["instructor"] is None
+
+
+def test_matches_against_any_submitted_window(client, customer_auth_headers):
+    """The instructor is only free for the 2nd of 3 submitted windows."""
+    token = signup_instructor_with_specialty(client, email="second_window@example.com", specialty="yoga")
+    headers = {"Authorization": f"Bearer {token}"}
+    add_availability(client, headers, 2, "13:00", "15:00")  # Wednesday only
+
+    windows = [_window(day=TUESDAY), _window(day=2, start="13:00", end="15:00"), _window(day=3)]
+    res = client.post("/api/customer/lesson-requests", json=_request_payload(windows=windows), headers=customer_auth_headers)
+    assert res.status_code == 201
+    assert res.json()["status"] == "pending"
+
+    confirmed = client.get("/api/client-requests", headers=headers).json()
+    assert len(confirmed) == 1
+    assert confirmed[0]["requested_day"] == 2
 
 
 def test_get_my_latest_lesson_request(client, customer_auth_headers):
@@ -152,7 +198,7 @@ def test_rebook_targets_only_the_preferred_instructor(client, customer_auth_head
 
     rebook = client.post(
         "/api/customer/lesson-requests",
-        json=_request_payload(preferred_instructor_id=instructor_id, requested_start_time="10:00", requested_end_time="11:00"),
+        json=_request_payload(preferred_instructor_id=instructor_id, windows=[_window(start="10:00", end="11:00")]),
         headers=customer_auth_headers,
     )
     assert rebook.status_code == 201
@@ -184,7 +230,7 @@ def test_rebook_rejected_when_no_overlap_with_preferred_instructor(client, custo
 
     res = client.post(
         "/api/customer/lesson-requests",
-        json=_request_payload(preferred_instructor_id=instructor_id, requested_day=3, requested_start_time="09:00", requested_end_time="11:00"),
+        json=_request_payload(preferred_instructor_id=instructor_id, windows=[_window(day=3)]),
         headers=customer_auth_headers,
     )
     assert res.status_code == 400

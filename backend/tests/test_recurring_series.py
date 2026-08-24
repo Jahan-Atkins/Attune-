@@ -6,13 +6,20 @@ CARD = {"card_name": "Jordan Lee", "card_number": "4242 4242 4242 4242", "card_e
 TUESDAY = 1
 
 
-def _matched_lesson_request(client, customer_auth_headers, instructor_headers, day=TUESDAY, start="09:00", end="11:00", duration=30):
-    add_availability(client, instructor_headers, day, start, end)
-    lr = client.post("/api/customer/lesson-requests", json={
-        "specialty": "yoga", "city": "New York, NY", "duration_minutes": duration,
-        "requested_day": day, "requested_start_time": start, "requested_end_time": end,
+def _lesson_payload(package="single", day=TUESDAY, start="09:00", end="11:00", duration=30):
+    return {
+        "specialty": "yoga", "package": package, "city": "New York, NY", "duration_minutes": duration,
+        "availability_windows": [{"day_of_week": day, "start_time": start, "end_time": end}],
         **CARD,
-    }, headers=customer_auth_headers).json()
+    }
+
+
+def _matched_lesson_request(client, customer_auth_headers, instructor_headers, day=TUESDAY, start="09:00", end="11:00", duration=30, package="single"):
+    add_availability(client, instructor_headers, day, start, end)
+    lr = client.post(
+        "/api/customer/lesson-requests", json=_lesson_payload(package=package, day=day, start=start, end=end, duration=duration),
+        headers=customer_auth_headers,
+    ).json()
     confirmed = client.put(f"/api/client-requests/lesson-requests/{lr['id']}/confirm", headers=instructor_headers)
     assert confirmed.status_code == 200, confirmed.text
     return lr["id"]
@@ -31,12 +38,18 @@ def test_create_requires_customer_auth(client):
 
 
 def test_create_rejects_unmatched_lesson_request(client, customer_auth_headers):
-    lr = client.post("/api/customer/lesson-requests", json={
-        "specialty": "yoga", "city": "New York, NY", "duration_minutes": 30,
-        "requested_day": TUESDAY, "requested_start_time": "09:00", "requested_end_time": "11:00", **CARD,
-    }, headers=customer_auth_headers).json()
+    lr = client.post("/api/customer/lesson-requests", json=_lesson_payload(), headers=customer_auth_headers).json()
 
     res = client.post("/api/customer/recurring-series", json={"lesson_request_id": lr["id"]}, headers=customer_auth_headers)
+    assert res.status_code == 400
+
+
+def test_create_rejects_a_multi_session_package_source(client, customer_auth_headers):
+    instructor_token = signup_instructor_with_specialty(client, email="rs_multi_session@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    lr_id = _matched_lesson_request(client, customer_auth_headers, instructor_headers, package="pack4")
+
+    res = client.post("/api/customer/recurring-series", json={"lesson_request_id": lr_id}, headers=customer_auth_headers)
     assert res.status_code == 400
 
 
@@ -82,10 +95,7 @@ def test_create_rejects_duplicate_active_series_for_same_slot(client, customer_a
     add_availability(client, instructor_headers, TUESDAY, "09:00", "11:00")
 
     def _confirm_new_lesson_request():
-        lr = client.post("/api/customer/lesson-requests", json={
-            "specialty": "yoga", "city": "New York, NY", "duration_minutes": 30,
-            "requested_day": TUESDAY, "requested_start_time": "09:00", "requested_end_time": "11:00", **CARD,
-        }, headers=customer_auth_headers).json()
+        lr = client.post("/api/customer/lesson-requests", json=_lesson_payload(), headers=customer_auth_headers).json()
         client.put(f"/api/client-requests/lesson-requests/{lr['id']}/confirm", headers=instructor_headers)
         return lr["id"]
 

@@ -107,6 +107,13 @@ def create_recurring_series(
         raise HTTPException(status_code=404, detail="Lesson request not found.")
     if source.status != "matched" or not source.instructor_id:
         raise HTTPException(status_code=400, detail="You can only make a standing booking from a confirmed match.")
+    if source.sessions_total != 1:
+        # A multi-session package's amount_paid is the whole package's
+        # price, not a per-lesson price — using it as
+        # RecurringSeries.price_per_lesson would be wrong. Its sessions
+        # get scheduled one at a time instead (schedule_next_session in
+        # lesson_requests.py), never folded into a standing series.
+        raise HTTPException(status_code=400, detail="Only a single-session request can become a standing weekly booking.")
 
     existing = (
         db.query(models.RecurringSeries)

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from .. import geo, models, schemas
 from ..database import get_db
 from ..email import send_email
-from ..matching import has_overlap, within_travel_distance
+from ..matching import has_overlap_any, within_travel_distance
 from ..security import get_current_instructor
 from .blocks import is_blocked
 
@@ -53,6 +53,17 @@ def _instructor_sees_booking(db: Session, instructor: models.Instructor, booking
     )
 
 
+def _matched_window_preview(instructor: models.Instructor, lesson_request: models.LessonRequest):
+    """Which of the customer's submitted windows (if any) this instructor
+    could fulfill right now, and the exact slot inside it —
+    ((day, window_start, window_end), (matched_start, matched_end)), or
+    None. Shared by the visibility check and the pending-list display
+    builder so it's computed once per instructor per request, not twice."""
+    windows = [(w.day_of_week, w.start_time, w.end_time) for w in lesson_request.availability_windows]
+    blocks = [(b.day_of_week, b.start_time, b.end_time) for b in instructor.availability_blocks]
+    return has_overlap_any(windows, blocks, lesson_request.duration_minutes)
+
+
 def _instructor_sees_lesson_request(db: Session, instructor: models.Instructor, lesson_request: models.LessonRequest) -> bool:
     if not instructor.active or instructor.suspended:
         return False
@@ -68,11 +79,7 @@ def _instructor_sees_lesson_request(db: Session, instructor: models.Instructor, 
         customer.latitude, customer.longitude,
     ):
         return False
-    blocks = [(b.day_of_week, b.start_time, b.end_time) for b in instructor.availability_blocks]
-    return has_overlap(
-        lesson_request.requested_day, lesson_request.requested_start_time,
-        lesson_request.requested_end_time, lesson_request.duration_minutes, blocks,
-    ) is not None
+    return _matched_window_preview(instructor, lesson_request) is not None
 
 
 def _distance_or_none(instructor: models.Instructor, customer: models.Customer) -> Optional[float]:
@@ -106,12 +113,17 @@ def _booking_out(instructor: models.Instructor, booking: models.Booking) -> sche
 
 
 def _lesson_request_out(instructor: models.Instructor, lesson_request: models.LessonRequest) -> schemas.ClientRequestOut:
+    # While pending, requested_day/start/end aren't set yet (see
+    # models.LessonRequest's docstring) — show this instructor a preview
+    # of which submitted window they'd actually be confirming instead.
+    preview = _matched_window_preview(instructor, lesson_request)
+    day, start, end = preview[0] if preview else (None, None, None)
     return schemas.ClientRequestOut(
         id=lesson_request.id,
-        request_type="schedule",
+        request_type="package" if lesson_request.package else "schedule",
         specialty=lesson_request.specialty,
-        package=None,
-        sessions_total=1,
+        package=lesson_request.package,
+        sessions_total=lesson_request.sessions_total,
         duration_minutes=lesson_request.duration_minutes,
         amount_due=lesson_request.amount_paid,
         customer_name=lesson_request.customer.name,
@@ -119,9 +131,9 @@ def _lesson_request_out(instructor: models.Instructor, lesson_request: models.Le
         customer_lat=lesson_request.customer.latitude,
         customer_lng=lesson_request.customer.longitude,
         distance_km=_distance_or_none(instructor, lesson_request.customer),
-        requested_day=lesson_request.requested_day,
-        requested_start_time=lesson_request.requested_start_time,
-        requested_end_time=lesson_request.requested_end_time,
+        requested_day=day,
+        requested_start_time=start,
+        requested_end_time=end,
         notes=lesson_request.notes,
         created_at=lesson_request.created_at.isoformat() if lesson_request.created_at else None,
     )
@@ -176,7 +188,7 @@ def _create_client_from_lesson_request(db: Session, instructor: models.Instructo
         status="current",
         next_session=next_session,
         sessions_completed=0,
-        sessions_total=1,
+        sessions_total=lesson_request.sessions_total,
         amount_paid=lesson_request.amount_paid,
         amount_total=lesson_request.amount_paid,
     ))
@@ -255,17 +267,15 @@ def confirm_lesson_request(
     if not _instructor_sees_lesson_request(db, instructor, lesson_request):
         raise HTTPException(status_code=400, detail="This request no longer fits your specialty, availability, or travel distance.")
 
-    blocks = [(b.day_of_week, b.start_time, b.end_time) for b in instructor.availability_blocks]
-    matched_window = has_overlap(
-        lesson_request.requested_day, lesson_request.requested_start_time,
-        lesson_request.requested_end_time, lesson_request.duration_minutes, blocks,
-    )
-    # _instructor_sees_lesson_request already checked this is not None.
-    matched_start, matched_end = matched_window
+    # _instructor_sees_lesson_request already confirmed this is not None.
+    (day, window_start, window_end), (matched_start, matched_end) = _matched_window_preview(instructor, lesson_request)
 
     lesson_request.instructor_id = instructor.id
     lesson_request.status = "matched"
     lesson_request.paid = True
+    lesson_request.requested_day = day
+    lesson_request.requested_start_time = window_start
+    lesson_request.requested_end_time = window_end
     lesson_request.matched_start_time = matched_start
     lesson_request.matched_end_time = matched_end
     lesson_request.distance_km = _distance_or_none(instructor, lesson_request.customer)

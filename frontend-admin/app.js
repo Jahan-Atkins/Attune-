@@ -294,9 +294,14 @@ function requestRowHTML(r) {
   const statusPill = `<span class="status-pill status-${r.status}">${escapeHtml(r.status.replace(/_/g, ' '))}</span>`;
   const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
   const specialtyLabel = r.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  // A still-pending multi-window request has no requested_day yet — see
+  // models.LessonRequest's docstring — so this needs a null guard now.
+  const packageNote = r.package ? `${escapeHtml(r.package)}, ${r.sessions_total} session${r.sessions_total > 1 ? 's' : ''} · ` : '';
   const detail = requestsTab === 'package'
     ? `${escapeHtml(r.package)} · $${r.amount_paid}`
-    : `${r.duration_minutes} min · ${DAY_NAMES[r.requested_day]} ${r.requested_start_time}–${r.requested_end_time} · $${r.amount_paid}`;
+    : r.requested_day != null
+      ? `${packageNote}${r.duration_minutes} min · ${DAY_NAMES[r.requested_day]} ${r.requested_start_time}–${r.requested_end_time} · $${r.amount_paid}`
+      : `${packageNote}${r.duration_minutes} min · windows pending match · $${r.amount_paid}`;
   const canCancel = r.status !== 'cancelled_by_admin';
   const cancelCall = requestsTab === 'package' ? `forceCancelBooking(${r.id})` : `forceCancelLessonRequest(${r.id})`;
   return `

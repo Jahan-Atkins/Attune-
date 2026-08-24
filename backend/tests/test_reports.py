@@ -5,7 +5,7 @@ get to a real matched pair (contact info is only ever exchanged after a
 real match — see client_requests.py's _notify_match), since that's
 exactly the relationship a report is about.
 """
-from .conftest import create_admin_and_login, signup_instructor_with_specialty
+from .conftest import create_admin_and_login, create_booking_row, signup_instructor_with_specialty
 
 CARD = {"card_name": "Jordan Lee", "card_number": "4242 4242 4242 4242", "card_expiry": "12/28", "card_cvc": "123"}
 CITY = "New York, NY"
@@ -15,15 +15,14 @@ def _make_matched_pair(client, customer_auth_headers, email="matched_instructor@
     """Returns (instructor_headers, instructor_id, client_id) for a real,
     confirmed match — client_id is the Client row on the instructor's own
     practice list, the same id the frontend already has in hand on the
-    Client Details page."""
+    Client Details page. Uses a directly-seeded Booking (no public create
+    route anymore, see routers/bookings.py's module docstring) purely as
+    a convenient way to reach a real match — nothing here is testing
+    Booking-specific behavior."""
     token = signup_instructor_with_specialty(client, email=email, specialty="yoga", name=name)
     instructor_headers = {"Authorization": f"Bearer {token}"}
-    booking = client.post(
-        "/api/customer/bookings",
-        json={"specialty": "yoga", "package": "single", "city": CITY, **CARD},
-        headers=customer_auth_headers,
-    ).json()
-    client.put(f"/api/client-requests/bookings/{booking['id']}/confirm", headers=instructor_headers)
+    booking_id = create_booking_row(city=CITY)
+    client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=instructor_headers)
 
     instructor_id = client.get("/api/customer/bookings/me", headers=customer_auth_headers).json()["instructor"]["id"]
     clients_list = client.get("/api/clients?status=current", headers=instructor_headers).json()

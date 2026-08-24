@@ -194,19 +194,7 @@ class InstructorPublicOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---- Bookings (signup + mock payment + matching) ----
-
-class BookingCreate(BaseModel):
-    specialty: str  # "yoga" | "sound_bath"
-    package: str    # "single" | "pack4" | "pack8"
-    city: str       # one of geo.DEMO_CITIES' names
-    notes: Optional[str] = None  # anything extra for the instructor to see
-    preferred_instructor_id: Optional[int] = None  # set by "Book Again"
-    card_name: str
-    card_number: str
-    card_expiry: str
-    card_cvc: str
-
+# ---- Bookings (legacy — read-only, see routers/bookings.py's module docstring) ----
 
 class BookingOut(BaseModel):
     id: int
@@ -243,17 +231,22 @@ class AvailabilityBlockOut(AvailabilityBlockBase):
 
 class LessonRequestCreate(BaseModel):
     specialty: str  # "yoga" | "sound_bath"
+    package: str  # "single" | "pack4" | "pack8"
     city: str  # one of geo.DEMO_CITIES' names
-    duration_minutes: int  # 30-90, 15-minute steps — see DURATION_PRICING
-    requested_day: int  # 0=Monday ... 6=Sunday
-    requested_start_time: str  # "HH:MM"
-    requested_end_time: str  # "HH:MM"
+    duration_minutes: int  # 30-90, 15-minute steps — see PACKAGE_DISCOUNT/DURATION_PRICING
+    availability_windows: List[AvailabilityBlockBase]  # at least one — the candidate windows to match against
     notes: Optional[str] = None  # anything extra for the instructor to see
     preferred_instructor_id: Optional[int] = None  # set by "Book Again"
     card_name: str
     card_number: str
     card_expiry: str
     card_cvc: str
+
+
+class ScheduleNextSessionRequest(BaseModel):
+    # Omit (or leave empty) to reuse the package root's originally-submitted
+    # windows — see routers/lesson_requests.py's schedule_next_session.
+    availability_windows: Optional[List[AvailabilityBlockBase]] = None
 
 
 class LessonRequestOut(BaseModel):
@@ -263,9 +256,15 @@ class LessonRequestOut(BaseModel):
     amount_paid: float
     paid: bool
     notes: Optional[str] = None
-    requested_day: int
-    requested_start_time: str
-    requested_end_time: str
+    package: Optional[str] = None
+    sessions_total: int = 1
+    session_number: int = 1
+    package_request_id: Optional[int] = None
+    sessions_scheduled: Optional[int] = None
+    availability_windows: List[AvailabilityBlockOut] = []
+    requested_day: Optional[int] = None
+    requested_start_time: Optional[str] = None
+    requested_end_time: Optional[str] = None
     matched_start_time: Optional[str] = None
     matched_end_time: Optional[str] = None
     distance_km: Optional[float] = None
@@ -429,9 +428,12 @@ class LessonRequestAdminOut(BaseModel):
     amount_paid: float
     paid: bool
     status: str
-    requested_day: int
-    requested_start_time: str
-    requested_end_time: str
+    package: Optional[str] = None
+    sessions_total: int = 1
+    session_number: int = 1
+    requested_day: Optional[int] = None
+    requested_start_time: Optional[str] = None
+    requested_end_time: Optional[str] = None
     created_at: Optional[datetime] = None
 
 

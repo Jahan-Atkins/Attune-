@@ -38,8 +38,7 @@ const TIME_WINDOWS = [
   { label: '1–3pm', start: '13:00', end: '15:00' },
   { label: '3–5pm', start: '15:00', end: '17:00' },
 ];
-let selectedDay = null;
-let selectedWindow = null;
+let selectedWindows = []; // [{day_of_week, start_time, end_time}, ...] — built up on the availability screen
 let selectedDuration = null;
 let citiesCache = [];
 let durationCatalog = {};
@@ -202,7 +201,7 @@ async function apiFetch(path, options = {}) {
 }
 
 /* =========================================================
-   WIZARD: specialty -> package -> payment -> match
+   WIZARD: specialty -> package -> availability -> payment -> match
    ========================================================= */
 async function goToSpecialtyStep() {
   goToScreen('specialty');
@@ -212,38 +211,20 @@ function selectSpecialty(specialty) {
   preferredInstructorId = null; // a fresh specialty pick always means a regular (broadcast) request
   preferredInstructorName = null;
   selectedSpecialty = specialty;
-  goToScreen('booking-type');
+  loadPackages();
+  goToScreen('package');
 }
 
 /* Rebooking — "Book Again with [Name]" on a matched History card. Skips
-   straight to the package/schedule step the normal wizard would only
-   reach after picking a specialty and a booking type, since both are
-   already implied by the past match being rebooked. */
-function rebookPackage(instructorId, specialty, encodedInstructorName) {
+   straight to the package step the normal wizard would only reach after
+   picking a specialty, since that's already implied by the past match
+   being rebooked. */
+function rebookRequest(instructorId, specialty, encodedInstructorName) {
   preferredInstructorId = instructorId;
   preferredInstructorName = decodeURIComponent(encodedInstructorName || '');
   selectedSpecialty = specialty;
   loadPackages();
   goToScreen('package');
-}
-
-async function rebookSchedule(instructorId, specialty, durationMinutes, encodedInstructorName) {
-  preferredInstructorId = instructorId;
-  preferredInstructorName = decodeURIComponent(encodedInstructorName || '');
-  selectedSpecialty = specialty;
-  await initScheduleStep();
-  selectScheduleDuration(durationMinutes);
-  goToScreen('schedule');
-}
-
-function chooseBookingType(type) {
-  if (type === 'package') {
-    loadPackages();
-    goToScreen('package');
-  } else {
-    initScheduleStep();
-    goToScreen('schedule');
-  }
 }
 
 async function loadPackages() {
@@ -271,56 +252,12 @@ async function loadPackages() {
 
 async function selectPackage(pkg) {
   selectedPackage = pkg;
-  const info = packageCatalog[pkg];
-  const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
-  const rebookNote = preferredInstructorId ? ` · Booking again with ${preferredInstructorName}` : '';
-  document.getElementById('payment-summary').textContent =
-    `${specialtyLabel} · ${info.sessions} session${info.sessions > 1 ? 's' : ''} · $${info.price}${rebookNote}`;
-
-  const cities = await loadCities();
-  document.getElementById('pay-city').innerHTML = cities.map(c => `<option value="${c}">${c}</option>`).join('');
-
-  goToScreen('payment');
-}
-
-async function submitPayment(evt) {
-  evt.preventDefault();
-  const errorEl = document.getElementById('payment-error');
-  errorEl.style.display = 'none';
-  const submitBtn = document.getElementById('pay-submit-btn');
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Sending…';
-
-  const payload = {
-    specialty: selectedSpecialty,
-    package: selectedPackage,
-    city: document.getElementById('pay-city').value,
-    notes: document.getElementById('pay-notes').value.trim() || null,
-    preferred_instructor_id: preferredInstructorId,
-    card_name: document.getElementById('pay-name').value.trim(),
-    card_number: document.getElementById('pay-number').value.trim(),
-    card_expiry: document.getElementById('pay-expiry').value.trim(),
-    card_cvc: document.getElementById('pay-cvc').value.trim(),
-  };
-
-  try {
-    const booking = await apiFetch('/api/customer/bookings', { method: 'POST', body: JSON.stringify(payload) });
-    lastRequestType = 'package';
-    preferredInstructorId = null;
-    preferredInstructorName = null;
-    renderMatch(booking, true);
-    goToScreen('match');
-  } catch (err) {
-    errorEl.textContent = err.message || 'Could not send request.';
-    errorEl.style.display = 'block';
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Send Request';
-  }
+  await initAvailabilityStep();
+  goToScreen('availability');
 }
 
 /* =========================================================
-   WIZARD: schedule a specific lesson (day/time/city -> payment -> match)
+   WIZARD: availability (duration + multiple day/window picks + city)
    ========================================================= */
 async function loadCities() {
   if (citiesCache.length) return citiesCache;
@@ -342,90 +279,131 @@ async function loadDurations() {
   return durationCatalog;
 }
 
-async function initScheduleStep() {
-  selectedDay = null;
-  selectedWindow = null;
+async function initAvailabilityStep() {
+  selectedWindows = [];
   selectedDuration = null;
 
   const durations = await loadDurations();
-  const durationEl = document.getElementById('schedule-duration-picker');
+  const durationEl = document.getElementById('avail-duration-picker');
   durationEl.innerHTML = Object.entries(durations).map(([minutes, price]) =>
-    `<button type="button" class="window-btn" data-duration="${minutes}" onclick="selectScheduleDuration(${minutes})">${minutes} min · $${price}</button>`
+    `<button type="button" class="window-btn" data-duration="${minutes}" onclick="selectAvailDuration(${minutes})">${minutes} min · $${price}</button>`
   ).join('');
 
-  const dayEl = document.getElementById('schedule-day-picker');
+  const dayEl = document.getElementById('avail-day-picker');
   dayEl.innerHTML = DAY_NAMES.map((name, i) =>
-    `<button type="button" class="day-btn" data-day="${i}" onclick="selectScheduleDay(${i})">${name.slice(0, 3)}</button>`
+    `<button type="button" class="day-btn" data-day="${i}" onclick="selectAvailDay(${i})">${name.slice(0, 3)}</button>`
   ).join('');
 
-  const windowEl = document.getElementById('schedule-window-picker');
+  const windowEl = document.getElementById('avail-window-picker');
   windowEl.innerHTML = TIME_WINDOWS.map((w, i) =>
-    `<button type="button" class="window-btn" data-window="${i}" onclick="selectScheduleWindow(${i})">${w.label}</button>`
+    `<button type="button" class="window-btn" data-window="${i}" onclick="selectAvailWindow(${i})">${w.label}</button>`
   ).join('');
+
+  renderAvailabilityWindowList();
 
   const cities = await loadCities();
-  const cityEl = document.getElementById('schedule-city');
+  const cityEl = document.getElementById('avail-city');
   cityEl.innerHTML = cities.map(c => `<option value="${c}">${c}</option>`).join('');
 }
 
-function selectScheduleDuration(minutes) {
+let stagedAvailDay = null;
+let stagedAvailWindow = null;
+
+function selectAvailDuration(minutes) {
   selectedDuration = minutes;
-  document.querySelectorAll('#schedule-duration-picker .window-btn').forEach(b => b.classList.toggle('selected', Number(b.dataset.duration) === minutes));
+  document.querySelectorAll('#avail-duration-picker .window-btn').forEach(b => b.classList.toggle('selected', Number(b.dataset.duration) === minutes));
 }
 
-function selectScheduleDay(day) {
-  selectedDay = day;
-  document.querySelectorAll('#schedule-day-picker .day-btn').forEach(b => b.classList.toggle('selected', Number(b.dataset.day) === day));
+function selectAvailDay(day) {
+  stagedAvailDay = day;
+  document.querySelectorAll('#avail-day-picker .day-btn').forEach(b => b.classList.toggle('selected', Number(b.dataset.day) === day));
 }
 
-function selectScheduleWindow(index) {
-  selectedWindow = TIME_WINDOWS[index];
-  document.querySelectorAll('#schedule-window-picker .window-btn').forEach((b, i) => b.classList.toggle('selected', i === index));
+function selectAvailWindow(index) {
+  stagedAvailWindow = TIME_WINDOWS[index];
+  document.querySelectorAll('#avail-window-picker .window-btn').forEach((b, i) => b.classList.toggle('selected', i === index));
 }
 
-function submitScheduleSelection() {
-  const errorEl = document.getElementById('schedule-error');
+function addAvailabilityWindow() {
+  const errorEl = document.getElementById('avail-error');
+  errorEl.style.display = 'none';
+  if (stagedAvailDay === null || !stagedAvailWindow) {
+    errorEl.textContent = 'Pick a day and a time window to add.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  selectedWindows.push({ day_of_week: stagedAvailDay, start_time: stagedAvailWindow.start, end_time: stagedAvailWindow.end, _label: `${DAY_NAMES[stagedAvailDay].slice(0, 3)}, ${stagedAvailWindow.label}` });
+  stagedAvailDay = null;
+  stagedAvailWindow = null;
+  document.querySelectorAll('#avail-day-picker .day-btn, #avail-window-picker .window-btn').forEach(b => b.classList.remove('selected'));
+  renderAvailabilityWindowList();
+}
+
+function removeAvailabilityWindow(index) {
+  selectedWindows.splice(index, 1);
+  renderAvailabilityWindowList();
+}
+
+function renderAvailabilityWindowList() {
+  const listEl = document.getElementById('avail-window-list');
+  listEl.innerHTML = selectedWindows.map((w, i) => `
+    <span class="day-btn selected" style="cursor:pointer;" onclick="removeAvailabilityWindow(${i})">${escapeHtml(w._label)} ✕</span>
+  `).join('') || '<p class="card-sub" style="margin:0;">No windows added yet.</p>';
+}
+
+function submitAvailabilitySelection() {
+  const errorEl = document.getElementById('avail-error');
   errorEl.style.display = 'none';
   if (!selectedDuration) {
     errorEl.textContent = 'Pick a lesson length to continue.';
     errorEl.style.display = 'block';
     return;
   }
-  if (selectedDay === null || !selectedWindow) {
-    errorEl.textContent = 'Pick a day and a time window to continue.';
+  if (selectedWindows.length === 0) {
+    errorEl.textContent = 'Add at least one availability window to continue.';
     errorEl.style.display = 'block';
     return;
   }
+  const info = packageCatalog[selectedPackage];
   const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
-  const city = document.getElementById('schedule-city').value;
-  const price = durationCatalog[selectedDuration];
   const rebookNote = preferredInstructorId ? ` · Booking again with ${preferredInstructorName}` : '';
-  document.getElementById('schedule-payment-summary').textContent =
-    `${specialtyLabel} · ${selectedDuration} min · ${DAY_NAMES[selectedDay]}, ${selectedWindow.label} · ${city} · $${price}${rebookNote}`;
-  goToScreen('schedule-payment');
+  const price = estimatedPackagePrice(selectedPackage, selectedDuration);
+  document.getElementById('payment-summary').textContent =
+    `${specialtyLabel} · ${info.sessions} session${info.sessions > 1 ? 's' : ''} · ${selectedDuration} min · ${selectedWindows.length} window${selectedWindows.length > 1 ? 's' : ''} submitted · $${price}${rebookNote}`;
+  goToScreen('payment');
 }
 
-async function submitSchedulePayment(evt) {
+/* Mirrors lesson_requests.py's PACKAGE_DISCOUNT/_price_for exactly — the
+   package list only ever shows the 30-min baseline price, so once a
+   duration is picked the customer needs to see the real total before
+   paying, not just find out on the match screen after submitting. */
+function estimatedPackagePrice(pkg, durationMinutes) {
+  const info = packageCatalog[pkg];
+  const discount = info.price / (info.sessions * durationCatalog[30]);
+  const perSession = Math.round(durationCatalog[durationMinutes] * discount);
+  return perSession * info.sessions;
+}
+
+async function submitPayment(evt) {
   evt.preventDefault();
-  const errorEl = document.getElementById('schedule-payment-error');
+  const errorEl = document.getElementById('payment-error');
   errorEl.style.display = 'none';
-  const submitBtn = document.getElementById('spay-submit-btn');
+  const submitBtn = document.getElementById('pay-submit-btn');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Sending…';
 
   const payload = {
     specialty: selectedSpecialty,
-    city: document.getElementById('schedule-city').value,
+    package: selectedPackage,
+    city: document.getElementById('avail-city').value,
     duration_minutes: selectedDuration,
-    requested_day: selectedDay,
-    requested_start_time: selectedWindow.start,
-    requested_end_time: selectedWindow.end,
-    notes: document.getElementById('spay-notes').value.trim() || null,
+    availability_windows: selectedWindows.map(w => ({ day_of_week: w.day_of_week, start_time: w.start_time, end_time: w.end_time })),
+    notes: document.getElementById('pay-notes').value.trim() || null,
     preferred_instructor_id: preferredInstructorId,
-    card_name: document.getElementById('spay-name').value.trim(),
-    card_number: document.getElementById('spay-number').value.trim(),
-    card_expiry: document.getElementById('spay-expiry').value.trim(),
-    card_cvc: document.getElementById('spay-cvc').value.trim(),
+    card_name: document.getElementById('pay-name').value.trim(),
+    card_number: document.getElementById('pay-number').value.trim(),
+    card_expiry: document.getElementById('pay-expiry').value.trim(),
+    card_cvc: document.getElementById('pay-cvc').value.trim(),
   };
 
   try {
@@ -500,28 +478,34 @@ function historyCardHTML(item) {
   // escapeHtml'd) so an instructor's own display name — arbitrary,
   // user-supplied text — can never break out of the quoted JS argument.
   const encodedName = instructorName ? encodeURIComponent(instructorName) : '';
-  const rebookCall = item._type === 'lesson-request'
-    ? `rebookSchedule(${item.instructor ? item.instructor.id : 'null'}, '${item.specialty}', ${item.duration_minutes}, '${encodedName}')`
-    : `rebookPackage(${item.instructor ? item.instructor.id : 'null'}, '${item.specialty}', '${encodedName}')`;
+  const rebookCall = `rebookRequest(${item.instructor ? item.instructor.id : 'null'}, '${item.specialty}', '${encodedName}')`;
   // A row generated by a RecurringSeries (recurring_series_id set) already
   // *is* a standing booking — offering "make this standing" or "book
   // again" on it would just create a second, redundant series/request.
   const isRecurringOccurrence = item._type === 'lesson-request' && !!item.occurrence_date;
   const isBlocked = item.instructor && blockedInstructorIds.has(item.instructor.id);
+  // Only a single-session request can become a standing weekly booking
+  // (see recurring_series.py) — a multi-session package's remaining
+  // sessions get scheduled one at a time instead, below.
+  const canMakeRecurring = item._type === 'lesson-request' && !isRecurringOccurrence && item.sessions_total === 1;
+  const isPackageRoot = item._type === 'lesson-request' && item.session_number === 1 && item.sessions_total > 1;
+  const hasSessionsToSchedule = isPackageRoot && item.sessions_scheduled != null && item.sessions_scheduled < item.sessions_total;
   return `
     <div class="card wizard-card" style="margin:0 0 14px; padding:20px 22px; text-align:left;">
-      <p class="card-sub" style="margin:0; text-align:left;">${escapeHtml(dateStr)} · ${escapeHtml(statusLabel)}${isRecurringOccurrence ? ' · Recurring' : ''}</p>
+      <p class="card-sub" style="margin:0; text-align:left;">${escapeHtml(dateStr)} · ${escapeHtml(statusLabel)}${isRecurringOccurrence ? ' · Recurring' : ''}${isPackageRoot ? ` · ${item.sessions_scheduled} of ${item.sessions_total} scheduled` : ''}</p>
       <p class="match-name" style="font-size:17px; margin-top:4px;">${escapeHtml(specialtyLabel)}${instructorName ? ' with ' + escapeHtml(instructorName) : ''}</p>
       ${item.status === 'matched' && item.instructor ? `
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
           <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleReviewForm('${key}')">Leave a Review</button>
           ${!isRecurringOccurrence ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="${rebookCall}">Book Again with ${escapeHtml(instructorName)}</button>` : ''}
-          ${item._type === 'lesson-request' && !isRecurringOccurrence ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="makeRecurring(${item.id})">Make This Standing Weekly</button>` : ''}
+          ${canMakeRecurring ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="makeRecurring(${item.id})">Make This Standing Weekly</button>` : ''}
+          ${hasSessionsToSchedule ? `<button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleScheduleNextForm('${key}', ${item.id})">Schedule Next Session (${item.sessions_scheduled} of ${item.sessions_total})</button>` : ''}
           <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleReportForm('${key}', ${item.instructor.id})">Report</button>
           <button class="btn btn-outline" style="padding:10px 16px; font-size:13px;" onclick="toggleBlockInstructor(${item.instructor.id}, '${encodedName}')">${isBlocked ? 'Unblock' : 'Block'}</button>
         </div>
         <div id="review-form-${key}" style="display:none; margin-top:14px;"></div>
-        <div id="report-form-${key}" style="display:none; margin-top:14px;"></div>` : ''}
+        <div id="report-form-${key}" style="display:none; margin-top:14px;"></div>
+        <div id="schedule-next-form-${key}" style="display:none; margin-top:14px;"></div>` : ''}
     </div>`;
 }
 
@@ -593,6 +577,100 @@ async function makeRecurring(lessonRequestId) {
     await loadHistory();
   } catch (err) {
     alert(err.message || 'Could not set up a standing booking.');
+  }
+}
+
+/* =========================================================
+   SCHEDULE NEXT SESSION
+   Same inline-expand shape as the review/report forms above. A small
+   self-contained day/window picker scoped to this one card's key (not
+   the wizard's global selectedWindows) — default is "use my original
+   availability", which just omits availability_windows from the POST.
+   ========================================================= */
+let scheduleNextWindows = {};
+
+function toggleScheduleNextForm(key, rootId) {
+  const el = document.getElementById(`schedule-next-form-${key}`);
+  if (el.style.display === 'block') {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  scheduleNextWindows[key] = [];
+  el.style.display = 'block';
+  el.innerHTML = `
+    <label style="display:flex; align-items:center; gap:8px; font-size:14px; cursor:pointer;">
+      <input type="checkbox" id="snext-use-original-${key}" checked onchange="toggleScheduleNextCustomWindows('${key}')"> Use my original availability
+    </label>
+    <div id="snext-custom-${key}" style="display:none; margin-top:10px;">
+      <div class="day-picker" id="snext-day-picker-${key}">
+        ${DAY_NAMES.map((name, i) => `<button type="button" class="day-btn" onclick="selectScheduleNextDay('${key}', ${i})" data-day="${i}">${name.slice(0, 3)}</button>`).join('')}
+      </div>
+      <div class="window-grid" id="snext-window-picker-${key}" style="margin-top:10px;">
+        ${TIME_WINDOWS.map((w, i) => `<button type="button" class="window-btn" onclick="selectScheduleNextWindow('${key}', ${i})" data-window="${i}">${w.label}</button>`).join('')}
+      </div>
+      <button class="btn btn-outline btn-block" type="button" style="margin-top:10px;" onclick="addScheduleNextWindow('${key}')">+ Add This Window</button>
+      <div id="snext-window-list-${key}" style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+    </div>
+    <div id="snext-error-${key}" class="form-error" style="display:none; margin-top:8px;"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:10px; padding:10px;" onclick="submitScheduleNext('${key}', ${rootId})">Schedule It</button>`;
+}
+
+function toggleScheduleNextCustomWindows(key) {
+  const useOriginal = document.getElementById(`snext-use-original-${key}`).checked;
+  document.getElementById(`snext-custom-${key}`).style.display = useOriginal ? 'none' : 'block';
+}
+
+let stagedSNextDay = {};
+let stagedSNextWindow = {};
+
+function selectScheduleNextDay(key, day) {
+  stagedSNextDay[key] = day;
+  document.querySelectorAll(`#snext-day-picker-${key} .day-btn`).forEach(b => b.classList.toggle('selected', Number(b.dataset.day) === day));
+}
+
+function selectScheduleNextWindow(key, index) {
+  stagedSNextWindow[key] = TIME_WINDOWS[index];
+  document.querySelectorAll(`#snext-window-picker-${key} .window-btn`).forEach((b, i) => b.classList.toggle('selected', i === index));
+}
+
+function addScheduleNextWindow(key) {
+  const errorEl = document.getElementById(`snext-error-${key}`);
+  errorEl.style.display = 'none';
+  const day = stagedSNextDay[key];
+  const w = stagedSNextWindow[key];
+  if (day === undefined || !w) {
+    errorEl.textContent = 'Pick a day and a time window to add.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  scheduleNextWindows[key].push({ day_of_week: day, start_time: w.start, end_time: w.end, _label: `${DAY_NAMES[day].slice(0, 3)}, ${w.label}` });
+  document.querySelectorAll(`#snext-day-picker-${key} .day-btn, #snext-window-picker-${key} .window-btn`).forEach(b => b.classList.remove('selected'));
+  const listEl = document.getElementById(`snext-window-list-${key}`);
+  listEl.innerHTML = scheduleNextWindows[key].map((win, i) =>
+    `<span class="day-btn selected" style="cursor:pointer;" onclick="scheduleNextWindows['${key}'].splice(${i},1); document.getElementById('snext-window-list-${key}').children[${i}].remove();">${escapeHtml(win._label)} ✕</span>`
+  ).join('');
+}
+
+async function submitScheduleNext(key, rootId) {
+  const errorEl = document.getElementById(`snext-error-${key}`);
+  errorEl.style.display = 'none';
+  const useOriginal = document.getElementById(`snext-use-original-${key}`).checked;
+  const payload = {};
+  if (!useOriginal) {
+    if (!scheduleNextWindows[key] || scheduleNextWindows[key].length === 0) {
+      errorEl.textContent = 'Add at least one window, or use your original availability.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    payload.availability_windows = scheduleNextWindows[key].map(w => ({ day_of_week: w.day_of_week, start_time: w.start_time, end_time: w.end_time }));
+  }
+  try {
+    await apiFetch(`/api/customer/lesson-requests/${rootId}/schedule-next`, { method: 'POST', body: JSON.stringify(payload) });
+    await loadHistory();
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not schedule the next session.';
+    errorEl.style.display = 'block';
   }
 }
 
@@ -752,8 +830,14 @@ function renderMatch(result, justBooked) {
 
   if (result.status === 'pending') {
     document.getElementById('match-eyebrow').textContent = 'Request sent';
+    // requested_day is null until a specific instructor confirms one of
+    // the submitted windows (see models.LessonRequest's docstring) — show
+    // a window-count summary instead while still pending.
+    const windowCount = result.availability_windows ? result.availability_windows.length : 0;
     const summary = isLessonRequest
-      ? `${DAY_NAMES[result.requested_day]}, ${result.requested_start_time}–${result.requested_end_time} · ${result.duration_minutes} min · ${specialtyLabel} · $${result.amount_paid} due once confirmed`
+      ? result.requested_day != null
+        ? `${DAY_NAMES[result.requested_day]}, ${result.requested_start_time}–${result.requested_end_time} · ${result.duration_minutes} min · ${specialtyLabel} · $${result.amount_paid} due once confirmed`
+        : `${result.sessions_total} session${result.sessions_total > 1 ? 's' : ''} · ${windowCount} window${windowCount === 1 ? '' : 's'} submitted · ${result.duration_minutes} min · ${specialtyLabel} · $${result.amount_paid} due once confirmed`
       : `${result.sessions_total} session${result.sessions_total > 1 ? 's' : ''} · ${specialtyLabel} · $${result.amount_paid} due once confirmed`;
     document.getElementById('match-summary').textContent = summary;
     document.getElementById('match-avatar').textContent = '···';
@@ -767,16 +851,16 @@ function renderMatch(result, justBooked) {
   }
 
   document.getElementById('match-eyebrow').textContent = justBooked ? "You're matched!" : 'Your match';
-  const summary = isLessonRequest
-    ? `${DAY_NAMES[result.requested_day]}, ${result.matched_start_time || result.requested_start_time}–${result.matched_end_time || result.requested_end_time} · ${specialtyLabel} · $${result.amount_paid} paid`
-    : `$${result.amount_paid} paid · ${result.sessions_total} session${result.sessions_total > 1 ? 's' : ''} · ${specialtyLabel}`;
-  document.getElementById('match-summary').textContent = summary;
 
   unmatchedEl.textContent = isLessonRequest
-    ? "No instructor could fulfill that window — try a different day, time, or lesson length, or choose a package instead."
+    ? "No instructor could fulfill any of those windows — try different days, times, or a shorter lesson length."
     : "No active instructor currently offers this specialty — please check back later.";
 
   if (!result.instructor) {
+    // Truly unmatched: requested_day/matched_start_time are never set on
+    // a row that never got confirmed, so there's no real day/time to
+    // summarize here — unmatchedEl below already carries the message.
+    document.getElementById('match-summary').textContent = `${specialtyLabel} · $${result.amount_paid} due once confirmed`;
     document.getElementById('match-avatar').textContent = '···';
     document.getElementById('match-name').textContent = 'Not matched';
     document.getElementById('match-specialty-badge').textContent = specialtyLabel;
@@ -785,6 +869,12 @@ function renderMatch(result, justBooked) {
     unmatchedEl.style.display = 'block';
     return;
   }
+
+  const summary = isLessonRequest
+    ? `${DAY_NAMES[result.requested_day]}, ${result.matched_start_time || result.requested_start_time}–${result.matched_end_time || result.requested_end_time} · ${specialtyLabel} · $${result.amount_paid} paid`
+    : `$${result.amount_paid} paid · ${result.sessions_total} session${result.sessions_total > 1 ? 's' : ''} · ${specialtyLabel}`;
+  document.getElementById('match-summary').textContent = summary;
+
   const instructor = result.instructor;
   const initials = instructor.name.split(' ').filter(Boolean).map(w => w[0].toUpperCase()).slice(0, 2).join('');
   document.getElementById('match-avatar').textContent = initials;

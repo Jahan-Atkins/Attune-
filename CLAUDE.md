@@ -199,6 +199,58 @@ Check the relevant one before assuming a feature doesn't exist yet.
   real account behind it). Same reasoning as `ClientOut.customer_id`
   being read-only. Don't add a route that accepts a bare `customer_id`
   from an instructor.
+- **`Booking` no longer has a create route — `POST /api/customer/bookings`
+  is gone.** Every new customer request, package-sized or not, goes
+  through `POST /api/customer/lesson-requests` now (it carries its own
+  `package`/`sessions_total`, alongside the availability windows —
+  there's no more separate "package vs. schedule" fork in the frontend).
+  `Booking`'s table, model, and the *entire* confirm/admin/review side of
+  it (`client_requests.py`'s Booking handling, `admin.py`'s Booking
+  views, `Review.booking_id`) stay live and untouched on purpose — a
+  `Booking` can be sitting at `status="pending"` when this shipped, and
+  ripping out anything past creation would strand it with no way to ever
+  complete. It's self-draining: once every pre-cutover pending `Booking`
+  is confirmed or admin-cancelled, that code just stops firing. Don't
+  "clean this up" by deleting it, and don't resurrect a `POST` route on
+  `bookings.py` — new code belongs in `lesson_requests.py`.
+- **A `LessonRequest` now carries a *set* of candidate availability
+  windows** (`LessonRequestAvailabilityWindow`, the
+  `availability_windows` relationship), not one `requested_day`/`start`/
+  `end` triple — a customer submits several ("Mon 9-11am, Wed 2-4pm..."),
+  and `matching.has_overlap_any()` tries each in order against a
+  candidate instructor's blocks. Consequently `requested_day`/
+  `requested_start_time`/`requested_end_time` are nullable and mean
+  something different now: they stay `NULL` while pending (there's no
+  single "the" window until one specific instructor confirms one) and
+  only get set at match time, to whichever window actually matched. Any
+  code reading these three fields must handle `None` — see
+  `frontend-customer/app.js`'s `renderMatch()` and
+  `frontend-admin/app.js`'s `requestRowHTML()` for the pattern. A row
+  created directly as `"matched"` (a `RecurringSeries` occurrence, or a
+  `schedule_next_session` row) still sets them immediately, same as before.
+- **A multi-session package schedules one session at a time, not all at
+  once.** `session_number=1` (the "root") is the only row that goes
+  through the normal broadcast/confirm lifecycle; sessions 2..N are
+  created later via `POST /api/customer/lesson-requests/{id}/schedule-next`,
+  directly as `"matched"`, `amount_paid=0` (the whole package was already
+  charged on the root), against the *already-fixed* instructor's own
+  availability — no re-broadcast, no repayment. `package_request_id`
+  points a child session back at its root; `LessonRequest.sessions_scheduled`
+  (computed, not stored) counts how many are matched so far. Because of
+  this, `RecurringSeries` creation now rejects any source with
+  `sessions_total != 1` — folding a multi-session package into a
+  standing weekly series would use the package's total price as a
+  per-lesson price, which is wrong. Don't relax that guard without also
+  fixing the price math.
+- **Package pricing is duration-scaled, not flat.** A `"single"`/`"pack4"`/
+  `"pack8"` price depends on the chosen lesson length:
+  `lesson_requests.py`'s `PACKAGE_DISCOUNT` (derived from
+  `bookings.py`'s legacy `PACKAGE_PRICING` at the 30-minute baseline, so
+  it reproduces those exact numbers at 30 min) multiplies
+  `DURATION_PRICING[duration]`. `frontend-customer/app.js`'s
+  `estimatedPackagePrice()` mirrors this formula client-side so the
+  customer sees the real total *before* paying, not just on the match
+  screen after submitting — if the backend formula changes, update both.
 
 ## Commands
 
@@ -210,7 +262,7 @@ alembic upgrade head
 python seed.py           # see logins below
 python create_admin.py   # optional — prompts for name/email/password, no default account
 uvicorn app.main:app --reload
-pytest                    # 225 tests in backend/tests/ — run after any route change
+pytest                    # 229 tests in backend/tests/ — run after any route change
 ```
 
 Instructor app: http://127.0.0.1:8000
@@ -295,23 +347,27 @@ the dropdown).
 
 ## Current status
 
-**Done:** instructor auth/CRUD/profile/FAQs, the full customer app (two
-request types — packages and scheduled lessons — both going through a
-pending -> broadcast -> instructor-confirms model, not auto-matching),
-instructor weekly availability + a travel-distance preference, a fake
-demo-city location system, variable lesson duration with tiered
-pricing, a Client Requests map (Leaflet via CDN), Postgres + deployment
-(Render, live), Filter/Sort on Open Sessions, a full Client Details page
-(location, recurring availability, itemized lesson list), and all seven
-parts of `PLATFORM-EXPANSION-ROADMAP.md`: contact info exchange, booking
-history, reviews & ratings, rebooking the same instructor, recurring
-weekly bookings, email notifications, and a full admin side
-(`frontend-admin/`, suspension, force-cancel, FAQ CRUD, metrics), a
-client-deletion approval workflow (instructor requests, admin
-approves/denies), and three launch-readiness items: rate limiting on
-login/forgot-password, self-serve password reset for instructors and
-customers, and a reporting/blocking mechanism between matched
-instructors and customers. 225 passing tests cover all of it. See
+**Done:** instructor auth/CRUD/profile/FAQs, a unified customer request
+flow (specialty -> package -> multiple availability windows -> payment,
+one model — `LessonRequest` — going through a pending -> broadcast ->
+instructor-confirms lifecycle, not auto-matching; the old separate
+"package" vs. "schedule" fork and its `Booking`-create path are retired,
+see the non-negotiables above), multi-session packages scheduled one
+session at a time after the first match, instructor weekly availability
++ a travel-distance preference, a fake demo-city location system,
+duration- and package-scaled pricing, a Client Requests map (Leaflet via
+CDN), Postgres + deployment (Render, live), Filter/Sort on Open
+Sessions, a full Client Details page (location, recurring availability,
+itemized lesson list), and all seven parts of
+`PLATFORM-EXPANSION-ROADMAP.md`: contact info exchange, booking history,
+reviews & ratings, rebooking the same instructor, recurring weekly
+bookings, email notifications, and a full admin side (`frontend-admin/`,
+suspension, force-cancel, FAQ CRUD, metrics), a client-deletion approval
+workflow (instructor requests, admin approves/denies), and three
+launch-readiness items: rate limiting on login/forgot-password,
+self-serve password reset for instructors and customers, and a
+reporting/blocking mechanism between matched instructors and customers.
+229 passing tests cover all of it. See
 `SCHEDULING-ROADMAP.md`,
 `REQUEST-CONFIRM-ROADMAP.md`, `CLIENT-DETAILS-ROADMAP.md`, and
 `PLATFORM-EXPANSION-ROADMAP.md` for how each piece got built, and

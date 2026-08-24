@@ -1,5 +1,6 @@
 from .conftest import (
     add_availability,
+    create_booking_row,
     set_instructor_city,
     set_instructor_max_distance,
     signup_instructor_with_specialty,
@@ -11,16 +12,14 @@ NYC = "New York, NY"
 CHICAGO = "Chicago, IL"  # ~1145 km from NYC
 
 
-def _booking_payload(**overrides):
-    payload = {"specialty": "yoga", "package": "single", "city": NYC, **CARD}
-    payload.update(overrides)
-    return payload
+def _window(day=TUESDAY, start="09:00", end="11:00"):
+    return {"day_of_week": day, "start_time": start, "end_time": end}
 
 
-def _lesson_payload(**overrides):
+def _lesson_payload(package="single", windows=None, **overrides):
     payload = {
-        "specialty": "yoga", "city": NYC, "duration_minutes": 30,
-        "requested_day": TUESDAY, "requested_start_time": "09:00", "requested_end_time": "11:00",
+        "specialty": "yoga", "package": package, "city": NYC, "duration_minutes": 30,
+        "availability_windows": windows if windows is not None else [_window()],
         **CARD,
     }
     payload.update(overrides)
@@ -47,17 +46,19 @@ def test_client_requests_require_instructor_auth(client):
 
 
 def test_confirm_requires_instructor_auth(client, customer_auth_headers):
-    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row()
     res = client.put(f"/api/client-requests/bookings/{booking_id}/confirm")
     assert res.status_code == 401
 
 
-# ---- booking (package) visibility ----
+# ---- booking (legacy package) visibility ----
+# Booking has no create route anymore — rows are seeded directly via
+# create_booking_row (see routers/bookings.py's module docstring for why
+# the confirm/visibility side of this stays live and tested).
 
 def test_pending_booking_visible_to_matching_instructor(client, customer_auth_headers):
     headers = _make_instructor(client, "pkg_match@example.com", specialty="yoga")
-    client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
+    create_booking_row(city=NYC)
 
     res = client.get("/api/client-requests", headers=headers)
     assert res.status_code == 200
@@ -73,7 +74,7 @@ def test_pending_booking_visible_to_matching_instructor(client, customer_auth_he
 
 def test_pending_booking_not_visible_to_wrong_specialty(client, customer_auth_headers):
     headers = _make_instructor(client, "pkg_wrong_specialty@example.com", specialty="sound_bath")
-    client.post("/api/customer/bookings", json=_booking_payload(specialty="yoga"), headers=customer_auth_headers)
+    create_booking_row(specialty="yoga", city=NYC)
 
     body = client.get("/api/client-requests", headers=headers).json()
     assert body == []
@@ -82,7 +83,7 @@ def test_pending_booking_not_visible_to_wrong_specialty(client, customer_auth_he
 def test_pending_booking_not_visible_to_inactive_instructor(client, customer_auth_headers):
     headers = _make_instructor(client, "pkg_inactive@example.com", specialty="yoga")
     client.put("/api/profile", json={"active": False}, headers=headers)
-    client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
+    create_booking_row(city=NYC)
 
     body = client.get("/api/client-requests", headers=headers).json()
     assert body == []
@@ -90,7 +91,7 @@ def test_pending_booking_not_visible_to_inactive_instructor(client, customer_aut
 
 def test_pending_booking_hidden_beyond_max_travel_distance(client, customer_auth_headers):
     headers = _make_instructor(client, "pkg_too_far@example.com", specialty="yoga", city=CHICAGO, max_distance=500)
-    client.post("/api/customer/bookings", json=_booking_payload(city=NYC), headers=customer_auth_headers)
+    create_booking_row(city=NYC)
 
     body = client.get("/api/client-requests", headers=headers).json()
     assert body == []
@@ -98,19 +99,18 @@ def test_pending_booking_hidden_beyond_max_travel_distance(client, customer_auth
 
 def test_pending_booking_visible_when_within_max_travel_distance(client, customer_auth_headers):
     headers = _make_instructor(client, "pkg_close_enough@example.com", specialty="yoga", city=CHICAGO, max_distance=2000)
-    client.post("/api/customer/bookings", json=_booking_payload(city=NYC), headers=customer_auth_headers)
+    create_booking_row(city=NYC)
 
     body = client.get("/api/client-requests", headers=headers).json()
     assert len(body) == 1
     assert body[0]["distance_km"] < 1500
 
 
-# ---- booking (package) confirm ----
+# ---- booking (legacy package) confirm ----
 
 def test_confirm_booking_creates_client_marks_matched_and_paid(client, customer_auth_headers):
     headers = _make_instructor(client, "pkg_confirm@example.com", specialty="yoga")
-    res = client.post("/api/customer/bookings", json=_booking_payload(package="pack4"), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(package="pack4", sessions_total=4, amount_paid=220, city=NYC)
 
     confirm_res = client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers)
     assert confirm_res.status_code == 200
@@ -129,8 +129,7 @@ def test_confirm_booking_creates_client_marks_matched_and_paid(client, customer_
 def test_confirm_booking_removes_it_from_other_instructors_queues(client, customer_auth_headers):
     headers_a = _make_instructor(client, "pkg_race_a@example.com", specialty="yoga", name="Instructor A")
     headers_b = _make_instructor(client, "pkg_race_b@example.com", specialty="yoga", name="Instructor B")
-    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(city=NYC)
 
     assert len(client.get("/api/client-requests", headers=headers_b).json()) == 1
     client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers_a)
@@ -141,8 +140,7 @@ def test_confirm_booking_removes_it_from_other_instructors_queues(client, custom
 def test_confirm_booking_already_claimed_returns_404(client, customer_auth_headers):
     headers_a = _make_instructor(client, "pkg_claim_a@example.com", specialty="yoga", name="Instructor A")
     headers_b = _make_instructor(client, "pkg_claim_b@example.com", specialty="yoga", name="Instructor B")
-    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(city=NYC)
 
     first = client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers_a)
     assert first.status_code == 200
@@ -155,8 +153,7 @@ def test_confirm_booking_rejects_wrong_specialty_instructor(client, customer_aut
     # rather than an immediate dead-end "unmatched" with nothing to confirm.
     _make_instructor(client, "pkg_yoga_exists@example.com", specialty="yoga")
     wrong_headers = _make_instructor(client, "pkg_wrong_confirm@example.com", specialty="sound_bath")
-    res = client.post("/api/customer/bookings", json=_booking_payload(specialty="yoga"), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(specialty="yoga", city=NYC)
 
     confirm_res = client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=wrong_headers)
     assert confirm_res.status_code == 400
@@ -170,7 +167,9 @@ def test_pending_lesson_request_visible_when_overlap_exists(client, customer_aut
 
     body = client.get("/api/client-requests", headers=headers).json()
     assert len(body) == 1
-    assert body[0]["request_type"] == "schedule"
+    # Every new request carries a package now (see models.LessonRequest's
+    # docstring) — request_type reflects that, not a separate "schedule" kind.
+    assert body[0]["request_type"] == "package"
     assert body[0]["requested_day"] == TUESDAY
     assert body[0]["duration_minutes"] == 30
 
@@ -210,6 +209,7 @@ def test_confirm_lesson_request_sets_matched_window_and_distance(client, custome
     lesson_request = client.get("/api/customer/lesson-requests/me", headers=customer_auth_headers).json()
     assert lesson_request["status"] == "matched"
     assert lesson_request["paid"] is True
+    assert lesson_request["requested_day"] == TUESDAY
     assert lesson_request["matched_start_time"] == "09:00"
     assert lesson_request["matched_end_time"] == "09:30"
     assert lesson_request["distance_km"] < 1500
@@ -226,6 +226,7 @@ def test_confirm_lesson_request_creates_client_with_next_session(client, custome
     matched = [c for c in their_clients if c["name"] == "Test Customer"]
     assert len(matched) == 1
     assert matched[0]["next_session"] == "Tuesday, 09:00"
+    assert matched[0]["sessions_total"] == 1
 
 
 def test_confirm_lesson_request_already_claimed_returns_404(client, customer_auth_headers):
@@ -246,7 +247,7 @@ def test_pending_list_never_exposes_customer_contact_info(client, customer_auth_
     """Browsing instructors see a pending request, but not the customer's
     email/phone — only the instructor who actually confirms should."""
     headers = _make_instructor(client, "contact_browse@example.com", specialty="yoga")
-    client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
+    create_booking_row(city=NYC)
 
     body = client.get("/api/client-requests", headers=headers).json()
     assert len(body) == 1
@@ -256,8 +257,7 @@ def test_pending_list_never_exposes_customer_contact_info(client, customer_auth_
 
 def test_confirm_booking_returns_customer_contact_info(client, customer_auth_headers):
     headers = _make_instructor(client, "contact_booking@example.com", specialty="yoga")
-    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(city=NYC)
 
     confirmed = client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers).json()
     assert confirmed["customer_email"] == "customer@example.com"
@@ -276,8 +276,7 @@ def test_confirm_lesson_request_returns_customer_contact_info(client, customer_a
 
 def test_confirmed_client_has_customer_contact_info_on_record(client, customer_auth_headers):
     headers = _make_instructor(client, "contact_client_record@example.com", specialty="yoga")
-    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(city=NYC)
     client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers)
 
     their_clients = client.get("/api/clients?status=current", headers=headers).json()
@@ -288,8 +287,7 @@ def test_confirmed_client_has_customer_contact_info_on_record(client, customer_a
 
 def test_matched_booking_exposes_instructor_contact_info_to_customer(client, customer_auth_headers):
     headers = _make_instructor(client, "contact_instructor@example.com", specialty="yoga", name="Contact Instructor")
-    res = client.post("/api/customer/bookings", json=_booking_payload(), headers=customer_auth_headers)
-    booking_id = res.json()["id"]
+    booking_id = create_booking_row(city=NYC)
     client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=headers)
 
     my_booking = client.get("/api/customer/bookings/me", headers=customer_auth_headers).json()

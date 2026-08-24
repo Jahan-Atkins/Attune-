@@ -4,10 +4,20 @@ why these are testable with plain capsys instead of mocking a provider:
 the only backend right now just prints, so asserting on stdout IS
 asserting on the behavior.
 """
-from .conftest import add_availability, create_admin_and_login, signup_instructor_with_specialty
+from .conftest import add_availability, create_admin_and_login, create_booking_row, signup_instructor_with_specialty
 
 CARD = {"card_name": "Jordan Lee", "card_number": "4242 4242 4242 4242", "card_expiry": "12/28", "card_cvc": "123"}
 TUESDAY = 1
+
+
+def _lesson_payload(**overrides):
+    payload = {
+        "specialty": "yoga", "package": "single", "city": "New York, NY", "duration_minutes": 30,
+        "availability_windows": [{"day_of_week": TUESDAY, "start_time": "09:00", "end_time": "11:00"}],
+        **CARD,
+    }
+    payload.update(overrides)
+    return payload
 
 
 def test_send_email_prints_to_console(capsys):
@@ -21,12 +31,10 @@ def test_send_email_prints_to_console(capsys):
 def test_confirm_booking_notifies_both_sides(client, customer_auth_headers, capsys):
     instructor_token = signup_instructor_with_specialty(client, email="notify_booking@example.com", specialty="yoga")
     instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
-    booking = client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": "New York, NY", **CARD,
-    }, headers=customer_auth_headers).json()
+    booking_id = create_booking_row(city="New York, NY")
 
     capsys.readouterr()  # discard anything printed by setup above
-    client.put(f"/api/client-requests/bookings/{booking['id']}/confirm", headers=instructor_headers)
+    client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=instructor_headers)
     out = capsys.readouterr().out
 
     assert "customer@example.com" in out
@@ -37,10 +45,7 @@ def test_confirm_lesson_request_notifies_both_sides(client, customer_auth_header
     instructor_token = signup_instructor_with_specialty(client, email="notify_schedule@example.com", specialty="yoga")
     instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
     add_availability(client, instructor_headers, TUESDAY, "09:00", "11:00")
-    lr = client.post("/api/customer/lesson-requests", json={
-        "specialty": "yoga", "city": "New York, NY", "duration_minutes": 30,
-        "requested_day": TUESDAY, "requested_start_time": "09:00", "requested_end_time": "11:00", **CARD,
-    }, headers=customer_auth_headers).json()
+    lr = client.post("/api/customer/lesson-requests", json=_lesson_payload(), headers=customer_auth_headers).json()
 
     capsys.readouterr()
     client.put(f"/api/client-requests/lesson-requests/{lr['id']}/confirm", headers=instructor_headers)
@@ -53,14 +58,12 @@ def test_confirm_lesson_request_notifies_both_sides(client, customer_auth_header
 def test_new_review_notifies_instructor(client, customer_auth_headers, capsys):
     instructor_token = signup_instructor_with_specialty(client, email="notify_review@example.com", specialty="yoga")
     instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
-    booking = client.post("/api/customer/bookings", json={
-        "specialty": "yoga", "package": "single", "city": "New York, NY", **CARD,
-    }, headers=customer_auth_headers).json()
-    client.put(f"/api/client-requests/bookings/{booking['id']}/confirm", headers=instructor_headers)
+    booking_id = create_booking_row(city="New York, NY")
+    client.put(f"/api/client-requests/bookings/{booking_id}/confirm", headers=instructor_headers)
 
     capsys.readouterr()
     res = client.post(
-        "/api/customer/reviews", json={"booking_id": booking["id"], "rating": 5, "comment": "Lovely session"},
+        "/api/customer/reviews", json={"booking_id": booking_id, "rating": 5, "comment": "Lovely session"},
         headers=customer_auth_headers,
     )
     out = capsys.readouterr().out
@@ -72,12 +75,26 @@ def test_new_review_notifies_instructor(client, customer_auth_headers, capsys):
 
 def _matched_lesson_request(client, customer_auth_headers, instructor_headers):
     add_availability(client, instructor_headers, TUESDAY, "09:00", "11:00")
-    lr = client.post("/api/customer/lesson-requests", json={
-        "specialty": "yoga", "city": "New York, NY", "duration_minutes": 30,
-        "requested_day": TUESDAY, "requested_start_time": "09:00", "requested_end_time": "11:00", **CARD,
-    }, headers=customer_auth_headers).json()
+    lr = client.post("/api/customer/lesson-requests", json=_lesson_payload(), headers=customer_auth_headers).json()
     client.put(f"/api/client-requests/lesson-requests/{lr['id']}/confirm", headers=instructor_headers)
     return lr["id"]
+
+
+def test_schedule_next_session_notifies_both_sides(client, customer_auth_headers, capsys):
+    instructor_token = signup_instructor_with_specialty(client, email="notify_schedule_next@example.com", specialty="yoga")
+    instructor_headers = {"Authorization": f"Bearer {instructor_token}"}
+    add_availability(client, instructor_headers, TUESDAY, "08:00", "12:00")
+    root = client.post(
+        "/api/customer/lesson-requests", json=_lesson_payload(package="pack4"), headers=customer_auth_headers,
+    ).json()
+    client.put(f"/api/client-requests/lesson-requests/{root['id']}/confirm", headers=instructor_headers)
+
+    capsys.readouterr()
+    client.post(f"/api/customer/lesson-requests/{root['id']}/schedule-next", json={}, headers=customer_auth_headers)
+    out = capsys.readouterr().out
+
+    assert "customer@example.com" in out
+    assert "notify_schedule_next@example.com" in out
 
 
 def test_recurring_series_created_notifies_both_sides(client, customer_auth_headers, capsys):

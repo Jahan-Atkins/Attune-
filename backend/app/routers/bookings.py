@@ -1,25 +1,32 @@
 """
-/api/customer/bookings — where a package selection becomes a pending
-request. This does NOT auto-match or charge anymore: create_booking()
-(1) does a format-only mock "card" check (no real payment gateway, and
-critically no actual charge — the card is only charged once an
-instructor confirms, see routers/client_requests.py), (2) resolves the
-customer's chosen city to lat/lng, and (3) sets status "pending" as long
-as at least one active instructor offers the specialty at all — the true
-"unmatched" dead end is reserved for when literally none do, since
-whether any *particular* instructor sees this request depends on their
-own travel-distance preference, evaluated dynamically when they browse
-(client_requests.py), not decided here.
+/api/customer/bookings — legacy, read-only. Package selection used to
+create a `Booking` here with no scheduling at all; every new customer
+request now goes through routers/lesson_requests.py instead, which
+carries a `package`/`sessions_total` of its own alongside the
+availability windows the customer submits (see that file's module
+docstring). This router keeps only what still needs to work for
+`Booking` rows that already existed at cutover: `list_packages` (price
+lookup lesson_requests.py's create route also reuses), `_mock_charge`
+(imported by lesson_requests.py too), and the two read routes so a
+customer can still see an old Booking in their history.
+
+Deliberately NOT deleted: `client_requests.py`'s entire Booking-handling
+side (visibility, confirm, Client creation) and `admin.py`'s Booking
+views. A `Booking` can be sitting at status="pending" — mid-broadcast —
+when this cutover ships; ripping out anything downstream of creation
+would strand it with no way to ever complete. It's self-draining: once
+every pre-cutover pending Booking is confirmed or admin-cancelled, that
+code simply stops firing, at zero ongoing cost. Don't "clean this up"
+by deleting it.
 """
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import geo, models, schemas
+from .. import models, schemas
 from ..database import get_db
 from ..security import get_current_customer
-from .blocks import is_blocked
 
 router = APIRouter(prefix="/api/customer/bookings", tags=["bookings"])
 
@@ -29,13 +36,12 @@ PACKAGE_PRICING = {
     "pack8": {"sessions": 8, "price": 400},
 }
 
-VALID_SPECIALTIES = ("yoga", "sound_bath")
-
 
 @router.get("/packages")
 def list_packages():
     """The frontend fetches this instead of hardcoding prices, so the two
-    never drift out of sync."""
+    never drift out of sync. Also used by lesson_requests.py's pricing
+    formula now — see PACKAGE_DISCOUNT there."""
     return PACKAGE_PRICING
 
 
@@ -56,83 +62,6 @@ def _mock_charge(card_number: str, card_expiry: str, card_cvc: str) -> None:
         raise HTTPException(status_code=400, detail="Expiry should be in MM/YY format.")
     if not card_cvc.isdigit() or not (3 <= len(card_cvc) <= 4):
         raise HTTPException(status_code=400, detail="That security code doesn't look right.")
-
-
-def _any_active_instructor_offers(db: Session, specialty: str) -> bool:
-    return (
-        db.query(models.Instructor)
-        .filter(models.Instructor.active.is_(True))
-        .filter(models.Instructor.suspended.is_(False))
-        .filter(models.Instructor.specialty.contains(specialty))
-        .first()
-        is not None
-    )
-
-
-def _validate_preferred_instructor(db: Session, instructor_id: int, specialty: str, customer_id: int) -> None:
-    """
-    A "Book Again" request targets one specific instructor instead of
-    broadcasting — so unlike the normal dead-end check, an instructor who
-    can't currently take it fails the request outright (400) rather than
-    silently landing as "unmatched", since the frontend can offer a
-    regular (broadcast) request as the next step. A block between this
-    customer and instructor (either direction) is treated the same way as
-    "can't currently take it" — see models.Block's docstring.
-    """
-    instructor = db.query(models.Instructor).filter(models.Instructor.id == instructor_id).first()
-    if (
-        not instructor
-        or not instructor.active
-        or instructor.suspended
-        or specialty not in [s.strip() for s in (instructor.specialty or "").split(",") if s.strip()]
-        or is_blocked(db, customer_id, instructor_id)
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="This instructor can't currently take this request — try a regular request instead.",
-        )
-
-
-@router.post("", response_model=schemas.BookingOut, status_code=201)
-def create_booking(
-    payload: schemas.BookingCreate,
-    db: Session = Depends(get_db),
-    customer: models.Customer = Depends(get_current_customer),
-):
-    if payload.specialty not in VALID_SPECIALTIES:
-        raise HTTPException(status_code=400, detail="Unknown specialty.")
-    if payload.package not in PACKAGE_PRICING:
-        raise HTTPException(status_code=400, detail="Unknown package.")
-    city = geo.CITY_BY_NAME.get(payload.city)
-    if not city:
-        raise HTTPException(status_code=400, detail="Unknown city.")
-    if payload.preferred_instructor_id is not None:
-        _validate_preferred_instructor(db, payload.preferred_instructor_id, payload.specialty, customer.id)
-
-    _mock_charge(payload.card_number, payload.card_expiry, payload.card_cvc)
-
-    customer.latitude = city["lat"]
-    customer.longitude = city["lng"]
-
-    pricing = PACKAGE_PRICING[payload.package]
-    has_any_candidate = payload.preferred_instructor_id is not None or _any_active_instructor_offers(db, payload.specialty)
-
-    booking = models.Booking(
-        customer_id=customer.id,
-        instructor_id=None,
-        preferred_instructor_id=payload.preferred_instructor_id,
-        specialty=payload.specialty,
-        package=payload.package,
-        sessions_total=pricing["sessions"],
-        amount_paid=pricing["price"],
-        paid=False,
-        notes=payload.notes,
-        status="pending" if has_any_candidate else "unmatched",
-    )
-    db.add(booking)
-    db.commit()
-    db.refresh(booking)
-    return booking
 
 
 @router.get("", response_model=List[schemas.BookingOut])
