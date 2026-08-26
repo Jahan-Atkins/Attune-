@@ -71,6 +71,7 @@ function applyAuthMode() {
   document.getElementById('auth-email-note').style.display = isSignup ? 'inline' : 'none';
   document.getElementById('auth-name').required = isSignup;
   document.getElementById('auth-phone').required = isSignup;
+  document.getElementById('auth-terms').checked = false;
   document.getElementById('auth-title').textContent = isSignup ? 'Create Your Account' : 'Log In';
   document.getElementById('auth-sub').textContent = isSignup ? 'Takes about a minute.' : 'Welcome back.';
   document.getElementById('auth-submit-btn').textContent = isSignup ? 'Create Account' : 'Log In';
@@ -140,6 +141,11 @@ async function handleAuthSubmit(evt) {
     if (authMode === 'signup') {
       const name = document.getElementById('auth-name').value.trim();
       const phone = document.getElementById('auth-phone').value.trim();
+      if (!document.getElementById('auth-terms').checked) {
+        errorEl.textContent = 'Please agree to the Terms of Service and Privacy Policy to create an account.';
+        errorEl.style.display = 'block';
+        return;
+      }
       const res = await fetch('/api/customer/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

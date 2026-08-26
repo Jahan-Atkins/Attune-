@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attune - Terms of Service</title>
+<link rel="icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .legal-page{max-width:720px; margin:0 auto; padding:12px 8px 60px;}
+  .legal-back{display:inline-block; margin-bottom:22px; color:var(--plum); font-weight:600; text-decoration:none; font-size:14px;}
+  .legal-page h1{font-size:32px;}
+  .legal-updated{color:var(--muted); font-size:13px; margin-top:6px;}
+  .legal-callout{background:var(--blush-light); border-radius:18px; padding:20px 22px; margin:22px 0 34px; box-shadow:var(--shadow-sm);}
+  .legal-callout p{font-size:14.5px; line-height:1.6; color:var(--ink); margin:0;}
+  .legal-callout strong{color:#8a3a24;}
+  .legal-page h2{font-size:19px; margin:30px 0 10px;}
+  .legal-page p{font-size:15px; line-height:1.65; color:var(--ink); margin:0 0 14px;}
+  .legal-page ul{margin:0 0 14px; padding-left:22px;}
+  .legal-page li{font-size:15px; line-height:1.65; color:var(--ink); margin-bottom:6px;}
+  .legal-page a{color:var(--plum); font-weight:600;}
+  .legal-placeholder{background:var(--bone); border:1.4px dashed var(--brass); border-radius:6px; padding:1px 6px; font-weight:600;}
+</style>
+</head>
+<body>
+<div class="legal-page">
+  <a class="legal-back" href="/">&larr; Back to Attune</a>
+  <h1>Terms of Service</h1>
+  <p class="legal-updated">Last updated: August 26, 2026</p>
+
+  <div class="legal-callout">
+    <p><strong>This is a first draft, not a finished legal document.</strong> It has not been reviewed by an attorney. It must be reviewed by a licensed attorney before Attune is used to process real customer payments or handle customer/instructor data at scale.</p>
+  </div>
+
+  <h2>1. What Attune Is</h2>
+  <p>Attune is a marketplace that helps customers find and book independent yoga and sound-bath instructors. Attune facilitates the introduction and scheduling between customers and instructors — it does not itself provide yoga, sound-bath, or any other wellness instruction. Instructors who accept bookings through Attune are independent businesses, not employees, agents, or contractors of Attune. See Section 4 for what that means for liability.</p>
+
+  <h2>2. Accounts</h2>
+  <p>You need an account to book a session (as a customer) or to offer sessions (as an instructor). You're responsible for keeping your login credentials secure and for anything that happens under your account. You must provide accurate information when you sign up and keep it up to date.</p>
+  <p>Admin accounts are created internally and are not available through public signup.</p>
+
+  <h2>3. Bookings, Packages, and Payments</h2>
+  <p>Customers submit a booking or lesson request, which is offered to eligible nearby instructors; a booking becomes confirmed once an instructor accepts it. Package pricing, session counts, and cancellation options are shown to you in the app at the time you book.</p>
+  <!-- Payments: as of this draft, card details entered at checkout are validated for format only — no real payment gateway is
+       connected and no charge is actually processed (see backend/app/routers/bookings.py's _mock_charge). Rewrite this
+       section once real payment processing (e.g. Stripe) ships, and only then add any claim about how charges/refunds work. -->
+  <p>Payment information you provide when booking is used to process your booking. Attune does not currently charge your payment method through a live payment processor — this will change as the product matures, and this section will be updated when it does. Don't rely on this document for how payment processing works technically; if you have questions about a charge, contact us at the address in Section 9.</p>
+  <p>Instructors set or accept the pricing shown for a given booking. Attune may take a platform fee from bookings in the future; any such fee will be disclosed before it applies.</p>
+
+  <h2>4. Instructors Are Independent Contractors; Assumption of Risk</h2>
+  <p>Instructors available through Attune are independent contractors who operate their own practices. They are not employees, partners, joint venturers, or agents of Attune, and Attune does not supervise, train, or control how an instructor conducts a session. Attune does not guarantee the quality, safety, legality, or outcome of any session booked through the app, and does not independently verify instructor certifications beyond what an instructor self-reports on their profile.</p>
+  <p>Yoga, sound-bath, and similar in-person or virtual wellness sessions carry inherent physical risk, including but not limited to physical injury. By booking or providing a session through Attune, you voluntarily assume that risk. If you have a medical condition or concern, consult a physician before participating.</p>
+  <p>To the fullest extent permitted by law, Attune's total liability arising out of or relating to your use of the app, or any session booked through it, is limited, and Attune disclaims all implied warranties (including merchantability and fitness for a particular purpose). Attune is not liable for the acts, omissions, or negligence of any instructor or customer.</p>
+
+  <h2>5. Cancellations</h2>
+  <p>Bookings and lesson requests can be cancelled from within the app. Specific cancellation terms and any package-related restrictions are shown to you at the time of booking or cancellation.</p>
+
+  <h2>6. Reviews and Conduct</h2>
+  <p>Reviews must reflect a genuine experience with an instructor. Attune may remove content, suspend, or restrict an account that violates these Terms, misuses the reporting/blocking tools, or otherwise abuses the platform.</p>
+
+  <h2>7. Account Deletion</h2>
+  <p>Customers can permanently delete their account and associated data at any time from within the app. Instructors can request account deletion by contacting us at the address in Section 9. See our <a href="/privacy.html">Privacy Policy</a> for what deletion actually removes.</p>
+
+  <h2>8. Changes to These Terms</h2>
+  <p>We may update these Terms as Attune changes. If we make material changes, we'll update the "Last updated" date above and, where practical, let you know in the app.</p>
+
+  <h2>9. Contact</h2>
+  <p>Questions about these Terms? Email us at <a href="mailto:support@attune.app">support@attune.app</a>.</p>
+
+  <h2>10. Governing Law</h2>
+  <p>These Terms are governed by the laws of <span class="legal-placeholder">[Governing State/Country]</span>, without regard to its conflict-of-law principles.</p>
+</div>
+</body>
+</html>
