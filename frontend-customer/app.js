@@ -10,6 +10,15 @@ function goHome() {
   goToScreen('landing');
 }
 
+const SPECIALTY_LABELS = {
+  yoga: 'Yoga',
+  sound_bath: 'Sound Bath',
+  meditation: 'Meditation',
+  pelvic_floor_therapy: 'Pelvic Floor Therapy',
+  massage: 'Massage',
+  acupuncture: 'Acupuncture',
+};
+
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -318,7 +327,7 @@ async function loadPackages() {
 function selectPackage(pkg) {
   selectedPackage = pkg;
   const info = packageCatalog[pkg];
-  const specialtyLabel = selectedSpecialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const specialtyLabel = SPECIALTY_LABELS[selectedSpecialty];
   const rebookNote = preferredInstructorId ? ` · Booking again with ${preferredInstructorName}` : '';
   const lessonsPerWeekNote = selectedLessonsPerWeek ? ` · ${selectedLessonsPerWeek}/week` : '';
   const price = estimatedPackagePrice(pkg, selectedDuration);
@@ -526,7 +535,7 @@ async function loadHistory() {
 }
 
 function historyCardHTML(item) {
-  const specialtyLabel = item.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const specialtyLabel = SPECIALTY_LABELS[item.specialty];
   const statusLabel = { pending: 'Pending', matched: 'Matched', unmatched: 'Unmatched' }[item.status] || item.status;
   const dateStr = item.occurrence_date
     ? new Date(item.occurrence_date + 'T00:00:00').toLocaleDateString()
@@ -849,7 +858,7 @@ async function loadRecurringSeries() {
 }
 
 function recurringCardHTML(series) {
-  const specialtyLabel = series.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const specialtyLabel = SPECIALTY_LABELS[series.specialty];
   const instructorName = series.instructor ? series.instructor.name : 'an instructor';
   const statusLabel = { active: 'Active', paused: 'Paused', cancelled: 'Cancelled' }[series.status] || series.status;
   const actions = series.status === 'active'
@@ -989,7 +998,7 @@ async function deleteAccount() {
    ========================================================= */
 function renderMatch(result, justBooked) {
   const isLessonRequest = 'requested_day' in result;
-  const specialtyLabel = result.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const specialtyLabel = SPECIALTY_LABELS[result.specialty];
   lastRequestId = result.id;
 
   const ctaBtn = document.getElementById('match-cta-btn');

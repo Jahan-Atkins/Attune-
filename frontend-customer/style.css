@@ -75,6 +75,8 @@ p{margin:0;}
 .option-icon-sage svg{stroke:var(--plum-dark); width:24px; height:24px;}
 .option-icon-brass{background:var(--brass-light);}
 .option-icon-brass svg{stroke:var(--plum-dark); width:24px; height:24px;}
+.option-icon-blush{background:var(--blush-light);}
+.option-icon-blush svg{stroke:var(--plum-dark); width:24px; height:24px;}
 .option-card h3{font-size:19px; font-weight:600; margin-bottom:6px;}
 .option-card p{font-size:13.5px; color:var(--muted); line-height:1.5;}
 
