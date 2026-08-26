@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /admin/
+Allow: /
+
+# Update this if a custom domain replaces the Render URL below.
+Sitemap: https://attune-q29q.onrender.com/customer/sitemap.xml
