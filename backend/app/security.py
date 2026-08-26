@@ -34,6 +34,27 @@ SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-secret-change-me")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # a week, generous for a learning project
 
+
+def _warn_if_default_secret_key() -> None:
+    """The fallback above is public — it's sitting right there in an
+    open-source repo — so anyone who reads it can forge a valid token for
+    any instructor, customer, or admin account on a deployment that's
+    still using it. Not worth hard-crashing the app over (that would
+    break the zero-setup local dev flow the fallback exists for), but a
+    production run on the default absolutely needs to be impossible to
+    miss in the logs. Same print()-over-logging reasoning as email.py."""
+    if SECRET_KEY == "dev-only-secret-change-me":
+        print(
+            "SECURITY WARNING: SECRET_KEY is not set, so this server is signing "
+            "and verifying every auth token with the public default from this "
+            "open-source repo. Anyone who has read the code can forge a valid "
+            "token for any account, including admin. Set a real SECRET_KEY in "
+            "Render's Environment tab before this runs in production."
+        )
+
+
+_warn_if_default_secret_key()
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Separate schemes so /docs shows separate "Authorize" flows per account
