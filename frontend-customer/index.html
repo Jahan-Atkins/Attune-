@@ -63,6 +63,7 @@
         <p>We'll send your request to nearby instructors. Your card is only charged once one confirms.</p>
       </div>
     </div>
+    <p class="login-hint"><a href="/terms.html" target="_blank" rel="noopener" style="color:inherit;">Terms</a> &middot; <a href="/privacy.html" target="_blank" rel="noopener" style="color:inherit;">Privacy</a></p>
   </section>
 
   <!-- ============ AUTH ============ -->
@@ -77,6 +78,10 @@
           <input class="field-input" type="text" id="auth-name" placeholder="Jordan Lee">
           <label class="field-label">Phone</label>
           <input class="field-input" type="tel" id="auth-phone" placeholder="(555) 010-1234">
+          <label style="display:flex; align-items:flex-start; gap:8px; font-size:13px; color:var(--muted); margin-top:14px; cursor:pointer;">
+            <input type="checkbox" id="auth-terms" style="margin-top:2px;">
+            <span>I agree to the <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--plum); font-weight:600;">Terms of Service</a> and <a href="/privacy.html" target="_blank" rel="noopener" style="color:var(--plum); font-weight:600;">Privacy Policy</a></span>
+          </label>
         </div>
         <label class="field-label">Email<span id="auth-email-note" style="display:none; font-weight:400; text-transform:none; letter-spacing:0;"> - where match and booking updates land</span></label>
         <input class="field-input" type="email" id="auth-email" required>

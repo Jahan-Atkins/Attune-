@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attune - Privacy Policy</title>
+<link rel="icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .legal-page{max-width:720px; margin:0 auto; padding:12px 8px 60px;}
+  .legal-back{display:inline-block; margin-bottom:22px; color:var(--plum); font-weight:600; text-decoration:none; font-size:14px;}
+  .legal-page h1{font-size:32px;}
+  .legal-updated{color:var(--muted); font-size:13px; margin-top:6px;}
+  .legal-callout{background:var(--blush-light); border-radius:18px; padding:20px 22px; margin:22px 0 34px; box-shadow:var(--shadow-sm);}
+  .legal-callout p{font-size:14.5px; line-height:1.6; color:var(--ink); margin:0;}
+  .legal-callout strong{color:#8a3a24;}
+  .legal-page h2{font-size:19px; margin:30px 0 10px;}
+  .legal-page p{font-size:15px; line-height:1.65; color:var(--ink); margin:0 0 14px;}
+  .legal-page ul{margin:0 0 14px; padding-left:22px;}
+  .legal-page li{font-size:15px; line-height:1.65; color:var(--ink); margin-bottom:6px;}
+  .legal-page a{color:var(--plum); font-weight:600;}
+  .legal-page table{width:100%; border-collapse:collapse; margin:0 0 18px; font-size:14px;}
+  .legal-page th, .legal-page td{text-align:left; padding:9px 10px; border-bottom:1px solid #eee4d8; vertical-align:top;}
+  .legal-page th{color:var(--muted); font-weight:600; font-size:12.5px; text-transform:uppercase; letter-spacing:.03em;}
+  .legal-placeholder{background:var(--bone); border:1.4px dashed var(--brass); border-radius:6px; padding:1px 6px; font-weight:600;}
+</style>
+</head>
+<body>
+<div class="legal-page">
+  <a class="legal-back" href="/">&larr; Back to Attune</a>
+  <h1>Privacy Policy</h1>
+  <p class="legal-updated">Last updated: August 26, 2026</p>
+
+  <div class="legal-callout">
+    <p><strong>This is a first draft, not a finished legal document.</strong> It has not been reviewed by an attorney. It must be reviewed by a licensed attorney before Attune is used to process real customer payments or handle customer/instructor data at scale.</p>
+  </div>
+
+  <h2>1. What This Policy Covers</h2>
+  <p>This Privacy Policy explains what information Attune collects from customers and instructors, why we collect it, who we share it with, and what control you have over it. "Attune," "we," and "us" refer to the Attune platform described in our <a href="/terms.html">Terms of Service</a>.</p>
+
+  <h2>2. Information We Collect</h2>
+  <p>We collect the information you give us directly when you create and use an account:</p>
+  <table>
+    <tr><th>Data</th><th>Why we collect it</th></tr>
+    <tr><td>Name, email, phone number</td><td>Creating your account, logging you in, and letting instructors/customers contact each other about a booking</td></tr>
+    <tr><td>Password (stored as a salted hash, never in plain text) — not collected at all if you sign up with Google</td><td>Securing your account</td></tr>
+    <tr><td>Address / city / state</td><td>Geocoded to a location so we can match customers with nearby instructors and calculate travel distance</td></tr>
+    <tr><td>Booking and lesson-request history, package selections, notes you add to a request</td><td>Running the matching and scheduling process, and showing you your own history</td></tr>
+    <tr><td>Reviews and ratings you write or receive</td><td>Letting customers rate instructors and helping other customers choose</td></tr>
+    <tr><td>Payment card details entered at checkout (card number, expiry, security code)</td><td>See Section 3 — used only to process your booking</td></tr>
+  </table>
+  <p>We also store certain account-standing information, like whether an admin has suspended an account, and reports or blocks you or another user file against each other, for trust-and-safety purposes.</p>
+
+  <h2>3. Payments</h2>
+  <!-- Accuracy check before editing this section: as of this draft, backend/app/routers/bookings.py's _mock_charge only
+       validates that a card number/expiry/CVC are well-formed — there is no live payment gateway integration and no real
+       charge occurs, and card details are never written to the database. Update this section (and remove this comment)
+       once real payment processing (e.g. Stripe) is wired up, and only then describe how card data is actually secured. -->
+  <p>Payment information you provide when booking a session (card number, expiry, and security code) is transmitted to our server to process your booking. It is used only for that purpose and is not stored in our database. Attune does not currently route payments through a live payment processor, so no real charge is made against your card today; this will change as the product matures, and this section will be updated when it does. We do not make any claim here about a specific security certification or encryption standard until real payment processing is in place.</p>
+
+  <h2>4. Third Parties We Share Data With</h2>
+  <p>We don't sell your personal information. We do share limited data with the services that help us run Attune:</p>
+  <ul>
+    <li><strong>Resend</strong> — sends transactional emails on our behalf (e.g. match notifications, booking updates, password resets). Resend receives the recipient's email address and the content of the message.</li>
+    <li><strong>Google</strong> — if you choose "Sign in with Google," Google verifies your identity and shares your name and email with us to create or log you into your account. We don't receive your Google password.</li>
+    <li><strong>Our hosting and database provider</strong> — our application and database run on third-party infrastructure (currently Render), which stores your account data on our behalf.</li>
+  </ul>
+  <p>We may also disclose information if required by law, or to investigate a report of abuse, fraud, or a safety concern involving our platform.</p>
+
+  <h2>5. Cookies and Local Storage</h2>
+  <p>Attune doesn't use tracking cookies. When you log in, your session token is stored in your browser's <code>localStorage</code> so you stay logged in between visits. It's used to authenticate your requests to our API and isn't shared with any third party.</p>
+
+  <h2>6. Your Rights and Account Deletion</h2>
+  <p>You can view and edit most of your profile information directly in the app. You can request a copy of the data we hold about you by contacting us (Section 9).</p>
+  <p>Customers can permanently delete their account and associated data (bookings, lesson requests, reviews, recurring series) at any time from the app's account settings. Instructors can request account deletion by contacting us — self-service instructor account deletion isn't available in the app yet. Deleting your account removes the data described above from our production database; it doesn't retroactively remove copies that may exist in backups or in a third party's own records (e.g. an email already sent via Resend).</p>
+
+  <h2>7. Data Retention</h2>
+  <p>We keep your account data for as long as your account is active, plus a reasonable period afterward for legitimate business or legal purposes (e.g. resolving a trust-and-safety report), unless you request deletion sooner as described above.</p>
+
+  <h2>8. Changes to This Policy</h2>
+  <p>We may update this Privacy Policy as Attune changes. If we make material changes, we'll update the "Last updated" date above and, where practical, let you know in the app.</p>
+
+  <h2>9. Contact</h2>
+  <p>Questions about this policy, or want to exercise a data right described above? Email us at <a href="mailto:support@attune.app">support@attune.app</a>.</p>
+
+  <h2>10. Governing Law</h2>
+  <p>This Policy is governed by the laws of <span class="legal-placeholder">[Governing State/Country]</span>, without regard to its conflict-of-law principles.</p>
+</div>
+</body>
+</html>
