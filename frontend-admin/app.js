@@ -1,3 +1,15 @@
+// Mirrors backend/app/models.py's SPECIALTY_LABELS exactly — the
+// instructor and customer frontends are keying off the same mapping,
+// so the wording has to match across all three.
+const SPECIALTY_LABELS = {
+  yoga: 'Yoga',
+  sound_bath: 'Sound Bath',
+  meditation: 'Meditation',
+  pelvic_floor_therapy: 'Pelvic Floor Therapy',
+  massage: 'Massage',
+  acupuncture: 'Acupuncture',
+};
+
 /* =========================================================
    NAVIGATION
    ========================================================= */
@@ -293,7 +305,7 @@ async function loadRequests() {
 function requestRowHTML(r) {
   const statusPill = `<span class="status-pill status-${r.status}">${escapeHtml(r.status.replace(/_/g, ' '))}</span>`;
   const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
-  const specialtyLabel = r.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const specialtyLabel = SPECIALTY_LABELS[r.specialty] || r.specialty;
   // A still-pending multi-window request has no requested_day yet — see
   // models.LessonRequest's docstring — so this needs a null guard now.
   const packageNote = r.package ? `${escapeHtml(r.package)}, ${r.sessions_total} session${r.sessions_total > 1 ? 's' : ''} · ` : '';
@@ -391,6 +403,67 @@ async function denyDeletion(id) {
   } catch (err) {
     alert(err.message || 'Could not deny this request.');
   }
+}
+
+/* =========================================================
+   SPECIALTY VERIFICATIONS
+   ========================================================= */
+async function openSpecialtyVerifications() {
+  goToScreen('specialty-verifications');
+  await loadSpecialtyVerifications();
+}
+
+async function loadSpecialtyVerifications() {
+  const listEl = document.getElementById('specialty-verifications-list');
+  const status = document.getElementById('specialty-verifications-filter-status').value;
+  const query = status ? `?status=${status}` : '';
+  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
+  try {
+    const requests = await apiFetch(`/api/admin/specialty-verifications${query}`);
+    listEl.innerHTML = requests.length
+      ? requests.map(specialtyVerificationRowHTML).join('')
+      : '<p class="empty-copy">No requests match this filter.</p>';
+  } catch (err) {
+    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function specialtyVerificationRowHTML(r) {
+  const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
+  const statusPill = `<span class="status-pill status-${r.status}">${escapeHtml(r.status)}</span>`;
+  const note = r.certification_note ? escapeHtml(r.certification_note) : 'No note provided';
+  const reason = r.status === 'rejected' && r.admin_note ? `<br>Reason: ${escapeHtml(r.admin_note)}` : '';
+  return `
+    <div class="admin-row">
+      <div class="admin-row-main">
+        <p class="admin-row-title">${escapeHtml(r.instructor_name)} ${statusPill}</p>
+        <p class="admin-row-meta">${escapeHtml(SPECIALTY_LABELS[r.specialty] || r.specialty)} · ${note} · Submitted ${escapeHtml(dateStr)}${reason}</p>
+      </div>
+      ${r.status === 'pending' ? `
+      <div class="admin-row-actions">
+        <button class="btn btn-outline btn-sm" onclick="denySpecialtyVerification(${r.id})">Deny</button>
+        <button class="btn btn-primary btn-sm" onclick="approveSpecialtyVerification(${r.id})">Approve</button>
+      </div>` : ''}
+    </div>`;
+}
+
+async function approveSpecialtyVerification(id) {
+  try {
+    await apiFetch(`/api/admin/specialty-verifications/${id}/approve`, { method: 'PUT' });
+  } catch (err) {
+    alert(err.message || 'Could not approve this request.');
+  }
+  await loadSpecialtyVerifications();
+}
+
+async function denySpecialtyVerification(id) {
+  const admin_note = prompt('Reason (optional, shown to the instructor):') || null;
+  try {
+    await apiFetch(`/api/admin/specialty-verifications/${id}/deny`, { method: 'PUT', body: JSON.stringify({ admin_note }) });
+  } catch (err) {
+    alert(err.message || 'Could not deny this request.');
+  }
+  await loadSpecialtyVerifications();
 }
 
 /* =========================================================
