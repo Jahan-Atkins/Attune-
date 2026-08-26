@@ -341,6 +341,94 @@ def deny_client_deletion(request_id: int, db: Session = Depends(get_db), admin: 
     return out
 
 
+# ---- Specialty verifications ----
+# Kept as persistent rows with a status, unlike client deletion requests
+# above — see models.SpecialtyVerification's docstring for why.
+
+def _specialty_verification_admin_out(request: models.SpecialtyVerification) -> schemas.SpecialtyVerificationAdminOut:
+    return schemas.SpecialtyVerificationAdminOut(
+        id=request.id,
+        specialty=request.specialty,
+        certification_note=request.certification_note,
+        status=request.status,
+        admin_note=request.admin_note,
+        created_at=request.created_at,
+        reviewed_at=request.reviewed_at,
+        instructor_id=request.instructor_id,
+        instructor_name=request.instructor.name,
+    )
+
+
+@router.get("/specialty-verifications", response_model=List[schemas.SpecialtyVerificationAdminOut])
+def list_specialty_verifications(
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    admin: models.Admin = Depends(get_current_admin),
+):
+    """Defaults to every request, newest first — pass ?status=pending to
+    see only the review queue."""
+    query = db.query(models.SpecialtyVerification)
+    if status:
+        query = query.filter(models.SpecialtyVerification.status == status)
+    requests = query.order_by(models.SpecialtyVerification.created_at.desc()).all()
+    return [_specialty_verification_admin_out(r) for r in requests]
+
+
+def _get_specialty_verification(request_id: int, db: Session) -> models.SpecialtyVerification:
+    request = db.query(models.SpecialtyVerification).filter(models.SpecialtyVerification.id == request_id).first()
+    if not request:
+        raise HTTPException(status_code=404, detail="Verification request not found.")
+    return request
+
+
+@router.put("/specialty-verifications/{request_id}/approve", response_model=schemas.SpecialtyVerificationAdminOut)
+def approve_specialty_verification(request_id: int, db: Session = Depends(get_db), admin: models.Admin = Depends(get_current_admin)):
+    request = _get_specialty_verification(request_id, db)
+    if request.status != "pending":
+        raise HTTPException(status_code=400, detail="This request has already been reviewed.")
+    instructor = request.instructor
+    current = {s.strip() for s in (instructor.specialty or "").split(",") if s.strip()}
+    current.add(request.specialty)
+    instructor.specialty = ",".join(sorted(current))
+    request.status = "approved"
+    request.reviewed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(request)
+    if instructor.email_notifications:
+        send_email(
+            to=instructor.email,
+            subject=f"{models.SPECIALTY_LABELS[request.specialty]} verification approved",
+            body=f"You're now verified to offer {models.SPECIALTY_LABELS[request.specialty]} on Attune.",
+        )
+    return _specialty_verification_admin_out(request)
+
+
+@router.put("/specialty-verifications/{request_id}/deny", response_model=schemas.SpecialtyVerificationAdminOut)
+def deny_specialty_verification(
+    request_id: int,
+    payload: schemas.SpecialtyVerificationDenyRequest = schemas.SpecialtyVerificationDenyRequest(),
+    db: Session = Depends(get_db),
+    admin: models.Admin = Depends(get_current_admin),
+):
+    request = _get_specialty_verification(request_id, db)
+    if request.status != "pending":
+        raise HTTPException(status_code=400, detail="This request has already been reviewed.")
+    instructor = request.instructor
+    request.status = "rejected"
+    request.admin_note = payload.admin_note
+    request.reviewed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(request)
+    if instructor.email_notifications:
+        send_email(
+            to=instructor.email,
+            subject=f"{models.SPECIALTY_LABELS[request.specialty]} verification not approved",
+            body=f"Your request to offer {models.SPECIALTY_LABELS[request.specialty]} was not approved."
+                 + (f" Reason: {payload.admin_note}" if payload.admin_note else " You're welcome to submit a new request with more information."),
+        )
+    return _specialty_verification_admin_out(request)
+
+
 # ---- Reports ----
 # Unlike client deletion requests, a report is never deleted when
 # resolved — see models.Report's docstring for why a persistent history

@@ -20,6 +20,22 @@ from sqlalchemy.orm import relationship, object_session
 from .database import Base
 from . import geo
 
+# The full specialty catalog. GATED_SPECIALTIES require an approved
+# SpecialtyVerification row before they can ever appear in an
+# Instructor.specialty string — see routers/profile.py's update_profile
+# for the enforcement point, and SpecialtyVerification below. Everything
+# else is self-service, same as it's always been.
+GATED_SPECIALTIES = ("pelvic_floor_therapy", "massage", "acupuncture")
+ALL_SPECIALTIES = ("yoga", "sound_bath", "meditation") + GATED_SPECIALTIES
+SPECIALTY_LABELS = {
+    "yoga": "Yoga",
+    "sound_bath": "Sound Bath",
+    "meditation": "Meditation",
+    "pelvic_floor_therapy": "Pelvic Floor Therapy",
+    "massage": "Massage",
+    "acupuncture": "Acupuncture",
+}
+
 
 class Instructor(Base):
     __tablename__ = "instructors"
@@ -73,6 +89,7 @@ class Instructor(Base):
     availability_blocks = relationship("AvailabilityBlock", back_populates="instructor", cascade="all, delete-orphan")
     matched_lesson_requests = relationship("LessonRequest", back_populates="instructor", foreign_keys="LessonRequest.instructor_id")
     reviews_received = relationship("Review", back_populates="instructor", cascade="all, delete-orphan")
+    specialty_verifications = relationship("SpecialtyVerification", back_populates="instructor", cascade="all, delete-orphan")
 
     @property
     def city(self):
@@ -207,6 +224,36 @@ class ClientDeletionRequest(Base):
 
     client = relationship("Client", back_populates="deletion_requests")
     instructor = relationship("Instructor")
+
+
+class SpecialtyVerification(Base):
+    """
+    An instructor's request to offer one of GATED_SPECIALTIES (see the
+    module-level constant above). Unlike ClientDeletionRequest, this
+    keeps a `status` column and never deletes the row on resolution —
+    a rejected request should stay visible to the instructor (with
+    admin_note explaining why) so they can see what happened and
+    resubmit, rather than the request just silently vanishing.
+
+    Approving one appends `specialty` to the instructor's own
+    Instructor.specialty string (see routers/admin.py's
+    approve_specialty_verification) — that's the only code path allowed
+    to add a gated specialty to that column. routers/profile.py's
+    update_profile explicitly blocks adding one directly through a plain
+    profile edit.
+    """
+    __tablename__ = "specialty_verifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    instructor_id = Column(Integer, ForeignKey("instructors.id"), nullable=False)
+    specialty = Column(String, nullable=False)  # one of GATED_SPECIALTIES
+    certification_note = Column(Text, nullable=True)  # instructor's self-reported credential info
+    status = Column(String, default="pending")  # "pending" | "approved" | "rejected"
+    admin_note = Column(Text, nullable=True)  # optional, set on rejection
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    reviewed_at = Column(DateTime, nullable=True)
+
+    instructor = relationship("Instructor", back_populates="specialty_verifications")
 
 
 class SessionListing(Base):

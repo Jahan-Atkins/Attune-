@@ -38,7 +38,7 @@ from .recurring_series import ensure_upcoming_occurrences
 
 router = APIRouter(prefix="/api/customer/lesson-requests", tags=["lesson-requests"])
 
-VALID_SPECIALTIES = ("yoga", "sound_bath")
+VALID_SPECIALTIES = models.ALL_SPECIALTIES
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 # Discounted per-minute rate for longer lessons — a 90-minute lesson

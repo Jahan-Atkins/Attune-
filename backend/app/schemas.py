@@ -524,6 +524,33 @@ class ClientDeletionRequestOut(BaseModel):
     requested_at: datetime
 
 
+# ---- Specialty verification (pelvic floor therapy, massage, acupuncture) ----
+
+class SpecialtyVerificationCreate(BaseModel):
+    specialty: str
+    certification_note: Optional[str] = None
+
+
+class SpecialtyVerificationOut(BaseModel):
+    id: int
+    specialty: str
+    certification_note: Optional[str] = None
+    status: str
+    admin_note: Optional[str] = None
+    created_at: datetime
+    reviewed_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SpecialtyVerificationAdminOut(SpecialtyVerificationOut):
+    instructor_id: int
+    instructor_name: str
+
+
+class SpecialtyVerificationDenyRequest(BaseModel):
+    admin_note: Optional[str] = None
+
+
 # ---- Reports & blocks ----
 # A customer reports/blocks an instructor by that instructor's id; an
 # instructor reports/blocks a customer by the Client id on their own
