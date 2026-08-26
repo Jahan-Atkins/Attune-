@@ -20,6 +20,22 @@ function setLearnTab(name, evt) {
 }
 
 /* =========================================================
+   SPECIALTIES
+   Mirrors backend/app/models.py's SPECIALTY_LABELS/GATED_SPECIALTIES —
+   keep the wording identical, the admin and customer frontends are
+   built against the same mapping.
+   ========================================================= */
+const SPECIALTY_LABELS = {
+  yoga: 'Yoga',
+  sound_bath: 'Sound Bath',
+  meditation: 'Meditation',
+  pelvic_floor_therapy: 'Pelvic Floor Therapy',
+  massage: 'Massage',
+  acupuncture: 'Acupuncture',
+};
+const GATED_SPECIALTIES = ['pelvic_floor_therapy', 'massage', 'acupuncture'];
+
+/* =========================================================
    SMALL HELPERS
    ========================================================= */
 function escapeHtml(str) {
@@ -1052,7 +1068,7 @@ async function withdrawSession(id) {
 let clientRequestsCache = [];
 
 function clientRequestCardHTML(r) {
-  const specialtyLabel = r.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+  const specialtyLabel = SPECIALTY_LABELS[r.specialty] || r.specialty;
   const scheduleLine = r.package
     ? `${r.package} package · ${r.sessions_total} session${r.sessions_total > 1 ? 's' : ''}`
     : `${DAY_NAMES[r.requested_day]}, ${r.requested_start_time}–${r.requested_end_time} · ${r.duration_minutes} min lesson`;
@@ -1137,7 +1153,7 @@ function openClientRequestsMap() {
       return;
     }
     const markers = pins.map(r => {
-      const specialtyLabel = r.specialty === 'yoga' ? 'Yoga' : 'Sound Bath';
+      const specialtyLabel = SPECIALTY_LABELS[r.specialty] || r.specialty;
       return L.marker([r.customer_lat, r.customer_lng])
         .bindPopup(`<b>${escapeHtml(r.customer_name)}</b><br>${escapeHtml(specialtyLabel)} · $${r.amount_due}`);
     });
@@ -1161,10 +1177,9 @@ async function loadProfile() {
     document.getElementById('profile-email').textContent = p.email;
     document.getElementById('active-toggle').classList.toggle('on', !!p.active);
 
-    const labels = { yoga: 'Yoga', sound_bath: 'Sound Bath' };
     const specialties = (p.specialty || '').split(',').map(s => s.trim()).filter(Boolean);
     document.getElementById('profile-specialty-badges').innerHTML = specialties
-      .map(s => `<span class="specialty-pill">${labels[s] || s}</span>`).join('');
+      .map(s => `<span class="specialty-pill">${SPECIALTY_LABELS[s] || s}</span>`).join('');
 
     document.getElementById('max-distance-input').value = p.max_travel_distance_km != null ? p.max_travel_distance_km : '';
 
@@ -1231,6 +1246,9 @@ async function openProfileForm() {
         <label style="display:flex; align-items:center; gap:6px; font-size:14px; cursor:pointer;">
           <input type="checkbox" id="pf-spec-sound" ${specialties.includes('sound_bath') ? 'checked' : ''}> Sound Bath
         </label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:14px; cursor:pointer;">
+          <input type="checkbox" id="pf-spec-meditation" ${specialties.includes('meditation') ? 'checked' : ''}> Meditation
+        </label>
       </div>
       <div id="pf-error" class="form-error" style="display:none; margin-top:12px;"></div>
       <button class="pill pill-solid pill-block" type="submit" style="margin-top:16px;">Save Profile</button>
@@ -1248,9 +1266,15 @@ async function submitProfileForm(evt) {
     errorEl.style.display = 'block';
     return;
   }
-  const specialties = [];
+  // Gated specialties (massage etc.) only ever get added via an approved
+  // verification request, never through this form — but they still need
+  // to be preserved here, or saving the form would silently drop any the
+  // instructor already has approved.
+  const existingSpecialties = ((profileCache && profileCache.specialty) || '').split(',').map(s => s.trim());
+  const specialties = existingSpecialties.filter(s => GATED_SPECIALTIES.includes(s));
   if (document.getElementById('pf-spec-yoga').checked) specialties.push('yoga');
   if (document.getElementById('pf-spec-sound').checked) specialties.push('sound_bath');
+  if (document.getElementById('pf-spec-meditation').checked) specialties.push('meditation');
   if (specialties.length === 0) {
     errorEl.textContent = 'Select at least one specialty so customers can be matched to you.';
     errorEl.style.display = 'block';
@@ -1281,6 +1305,87 @@ async function submitProfileForm(evt) {
     await Promise.all([loadProfile(), loadSummary()]);
   } catch (err) {
     errorEl.textContent = err.message || 'Could not save profile.';
+    errorEl.style.display = 'block';
+  }
+}
+
+/* =========================================================
+   SPECIALTY VERIFICATION
+   GATED_SPECIALTIES can't be self-added (see update_profile) — an
+   instructor requests one here and an admin approves/denies it
+   elsewhere. Always shown against the MOST RECENT request per
+   specialty, since a rejected request can be resubmitted.
+   ========================================================= */
+let specialtyVerificationsCache = [];
+
+function latestSpecialtyVerification(specialty) {
+  return specialtyVerificationsCache.find(r => r.specialty === specialty) || null;
+}
+
+async function openSpecialtyVerificationsModal() {
+  openModal('Certifications & Verification', '<p class="empty-copy">Loading…</p>');
+  try {
+    specialtyVerificationsCache = await apiFetch('/api/profile/specialty-verifications');
+    renderSpecialtyVerificationsModal();
+  } catch (err) {
+    document.getElementById('modal-body').innerHTML = `<p class="empty-copy">${escapeHtml(err.message || "Couldn't load verification requests.")}</p>`;
+  }
+}
+
+function renderSpecialtyVerificationsModal() {
+  const rows = GATED_SPECIALTIES.map(specialty => {
+    const label = SPECIALTY_LABELS[specialty];
+    const req = latestSpecialtyVerification(specialty);
+    let actionHtml;
+    if (req && req.status === 'pending') {
+      actionHtml = `<span class="chip">Pending review</span>`;
+    } else if (req && req.status === 'approved') {
+      actionHtml = `<span class="chip cd-status-badge">Verified &#10003;</span>`;
+    } else {
+      actionHtml = `<button class="action-btn primary" onclick="openSpecialtyVerificationRequestForm('${specialty}')">${req ? 'Request Again' : 'Request Verification'}</button>`;
+    }
+    const rejectedNote = req && req.status === 'rejected' && req.admin_note
+      ? `<p class="progress-text" style="font-style:italic;">${escapeHtml(req.admin_note)}</p>`
+      : '';
+    return `
+      <div class="client-card">
+        <div class="client-row">
+          <p class="client-name">${escapeHtml(label)}</p>
+          ${actionHtml}
+        </div>
+        ${rejectedNote}
+      </div>`;
+  }).join('');
+  document.getElementById('modal-body').innerHTML = `
+    <p class="empty-copy" style="margin:0 0 10px;">Pelvic Floor Therapy, Massage, and Acupuncture require admin approval before they're added to your specialties.</p>
+    ${rows}`;
+}
+
+function openSpecialtyVerificationRequestForm(specialty) {
+  const label = SPECIALTY_LABELS[specialty];
+  const body = `
+    <form id="sv-form" onsubmit="submitSpecialtyVerificationForm(event, '${specialty}')">
+      <label class="field-label">Certification note (optional)</label>
+      <textarea class="field-input" id="sv-note" style="min-height:80px;" placeholder="e.g. Licensed massage therapist, CA license #12345"></textarea>
+      <div id="sv-error" class="form-error" style="display:none; margin-top:12px;"></div>
+      <button class="pill pill-solid pill-block" type="submit" style="margin-top:16px;">Submit Request</button>
+    </form>`;
+  openModal(`Request ${label} Verification`, body);
+}
+
+async function submitSpecialtyVerificationForm(evt, specialty) {
+  evt.preventDefault();
+  const errorEl = document.getElementById('sv-error');
+  errorEl.style.display = 'none';
+  const certification_note = document.getElementById('sv-note').value.trim() || null;
+  try {
+    await apiFetch('/api/profile/specialty-verifications', {
+      method: 'POST',
+      body: JSON.stringify({ specialty, certification_note }),
+    });
+    await openSpecialtyVerificationsModal();
+  } catch (err) {
+    errorEl.textContent = err.message || 'Could not submit request.';
     errorEl.style.display = 'block';
   }
 }
