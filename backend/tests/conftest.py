@@ -13,19 +13,23 @@ from pathlib import Path
 TEST_DB_PATH = Path(__file__).resolve().parent / "test.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
 os.environ["SECRET_KEY"] = "test-only-secret"
-# Same trick, same reason: email.py/google_auth.py each call load_dotenv()
-# too (see their own comments on why), and python-dotenv's load_dotenv()
-# defaults to override=False — it never clobbers an env var already set,
-# so pre-setting these here (before `from app.main import app` triggers
-# those imports) keeps the suite isolated from whatever real
-# EMAIL_BACKEND/RESEND_API_KEY/GOOGLE_CLIENT_ID happen to be sitting in a
+# Same trick, same reason: email.py/google_auth.py/stripe_connect.py each
+# call load_dotenv() too (see their own comments on why), and
+# python-dotenv's load_dotenv() defaults to override=False — it never
+# clobbers an env var already set, so pre-setting these here (before
+# `from app.main import app` triggers those imports) keeps the suite
+# isolated from whatever real EMAIL_BACKEND/RESEND_API_KEY/
+# GOOGLE_CLIENT_ID/STRIPE_SECRET_KEY happen to be sitting in a
 # developer's actual backend/.env. Without this, a developer with real
-# credentials configured locally would silently make real Resend calls
-# (and see real API responses instead of the console output several
-# tests assert on) just by running `pytest`.
+# credentials configured locally would silently make real Resend/Stripe
+# calls (and see real API responses instead of the console output or
+# mocked behavior several tests assert on) just by running `pytest` —
+# a real Stripe key is the highest-stakes one of these to ever leak into
+# a test run by accident.
 os.environ["EMAIL_BACKEND"] = "console"
 os.environ["RESEND_API_KEY"] = ""
 os.environ["GOOGLE_CLIENT_ID"] = ""
+os.environ["STRIPE_SECRET_KEY"] = ""
 
 import pytest
 from fastapi.testclient import TestClient

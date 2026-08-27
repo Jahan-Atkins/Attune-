@@ -73,6 +73,16 @@ class Instructor(Base):
     state_name = Column(String, nullable=True)
     max_travel_distance_km = Column(Float, nullable=True)  # null = no limit
 
+    # Stripe Connect onboarding — see stripe_connect.py's module docstring
+    # for why this is onboarding-only, with no payout/transfer logic yet.
+    stripe_account_id = Column(String, nullable=True)
+    # Cached from Stripe at the last status check (routers/profile.py's
+    # stripe-connect/status route) — never written to directly by an
+    # instructor, and never trusted as current without re-checking with
+    # Stripe first, since it can go stale (a requirement newly came due,
+    # a payout was disabled, etc).
+    stripe_transfers_enabled = Column(Boolean, default=False)
+
     # Platform-controlled, unlike `active` (which the instructor toggles
     # themselves — "I'm choosing not to accept new clients right now").
     # An instructor can't flip this on themselves; only an admin can.

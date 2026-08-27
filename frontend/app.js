@@ -1189,6 +1189,44 @@ async function loadProfile() {
   } catch (err) {
     console.error('Failed to load profile:', err);
   }
+  await loadStripeConnectStatus();
+}
+
+/* =========================================================
+   STRIPE CONNECT
+   Onboarding only — see backend/app/stripe_connect.py's module
+   docstring for why there's no payout/transfer logic here yet.
+   ========================================================= */
+let stripeConnectCache = null;
+
+async function loadStripeConnectStatus() {
+  const statusEl = document.getElementById('stripe-connect-status');
+  try {
+    stripeConnectCache = await apiFetch('/api/profile/stripe-connect/status');
+    statusEl.textContent = !stripeConnectCache.configured ? 'Payout Account'
+      : stripeConnectCache.transfers_enabled ? 'Payouts enabled ✓'
+      : stripeConnectCache.connected ? 'Finish payout setup'
+      : 'Connect with Stripe';
+  } catch (err) {
+    console.error('Failed to load Stripe Connect status:', err);
+  }
+}
+
+async function handleStripeConnectClick() {
+  if (!stripeConnectCache || !stripeConnectCache.configured) {
+    alert('Payouts aren\'t set up on this server yet.');
+    return;
+  }
+  if (stripeConnectCache.transfers_enabled) {
+    alert('Payouts are already enabled for your account.');
+    return;
+  }
+  try {
+    const { onboarding_url } = await apiFetch('/api/profile/stripe-connect/start', { method: 'POST' });
+    window.location.href = onboarding_url;
+  } catch (err) {
+    alert(err.message || 'Could not start Stripe onboarding.');
+  }
 }
 
 async function saveMaxDistance() {
@@ -1651,13 +1689,16 @@ async function boot() {
   ]);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const resetToken = new URLSearchParams(window.location.search).get('reset_token');
   if (resetToken) {
     history.replaceState(null, '', window.location.pathname);
     openResetPasswordModal(resetToken);
   }
-  boot();
+  const stripeReturn = new URLSearchParams(window.location.search).get('stripe_connect');
+  if (stripeReturn) history.replaceState(null, '', window.location.pathname);
+  await boot();
+  if (stripeReturn) goToScreen('profile');
   initGoogleSignIn();
 });
 

@@ -524,6 +524,18 @@ class ClientDeletionRequestOut(BaseModel):
     requested_at: datetime
 
 
+# ---- Stripe Connect (payout onboarding) ----
+
+class StripeConnectStatusOut(BaseModel):
+    configured: bool  # whether the SERVER has STRIPE_SECRET_KEY set at all
+    connected: bool  # whether this instructor has a Stripe account id on file
+    transfers_enabled: bool
+
+
+class StripeConnectStartOut(BaseModel):
+    onboarding_url: str
+
+
 # ---- Specialty verification (pelvic floor therapy, massage, acupuncture) ----
 
 class SpecialtyVerificationCreate(BaseModel):

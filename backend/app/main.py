@@ -16,17 +16,19 @@ these into separate services; see README.md's deploy section for how
 you'd do that later without changing much backend code.
 """
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import geo, google_auth, models, schemas
 from .database import engine, get_db
-from .security import get_current_instructor
+from .security import get_current_instructor, naive_utc_now
 from .routers import auth, clients, sessions, profile, faqs, customer_auth, customer_profile, bookings, availability, lesson_requests, client_requests, reviews, recurring_series, admin_auth, admin, reports, blocks
 
 # Creates all tables defined in models.py if they don't exist yet.
@@ -115,9 +117,23 @@ def get_summary(
         .filter(models.Client.instructor_id == instructor.id, models.Client.status == "current")
         .first()
     )
+    # Monday 00:00 of the current week, naive (see naive_utc_now's own
+    # docstring for why a naive cutoff is required to compare against a
+    # DB-read created_at without erroring on Postgres). "Earned" means
+    # charged, not paid out — real instructor payouts are a separate,
+    # not-yet-built piece (see stripe_connect.py's module docstring).
+    week_start = naive_utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start -= timedelta(days=week_start.weekday())
+    earned_this_week = 0.0
+    for model in (models.Booking, models.LessonRequest):
+        earned_this_week += (
+            db.query(func.coalesce(func.sum(model.amount_paid), 0.0))
+            .filter(model.instructor_id == instructor.id, model.paid.is_(True), model.created_at >= week_start)
+            .scalar()
+        )
     return schemas.Summary(
         greeting_name=instructor.name.split(" ")[0],
-        earned_this_week=0,
+        earned_this_week=earned_this_week,
         current_client_name=current_client.name if current_client else None,
         current_client_initials=current_client.initials if current_client else None,
     )

@@ -13,10 +13,10 @@ lesson_requests.py's create_lesson_request.
 """
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from .. import geo, models, schemas
+from .. import geo, models, schemas, stripe_connect
 from ..database import get_db
 from ..security import get_current_instructor
 
@@ -123,3 +123,42 @@ def request_specialty_verification(
     db.commit()
     db.refresh(request)
     return request
+
+
+@router.get("/stripe-connect/status", response_model=schemas.StripeConnectStatusOut)
+def get_stripe_connect_status(
+    db: Session = Depends(get_db),
+    instructor: models.Instructor = Depends(get_current_instructor),
+):
+    configured = bool(stripe_connect.STRIPE_SECRET_KEY)
+    if configured and instructor.stripe_account_id:
+        # Re-check with Stripe rather than trusting the cached column —
+        # see models.Instructor.stripe_transfers_enabled's docstring for why.
+        instructor.stripe_transfers_enabled = stripe_connect.transfers_enabled(instructor.stripe_account_id)
+        db.commit()
+    return schemas.StripeConnectStatusOut(
+        configured=configured,
+        connected=instructor.stripe_account_id is not None,
+        transfers_enabled=instructor.stripe_transfers_enabled,
+    )
+
+
+@router.post("/stripe-connect/start", response_model=schemas.StripeConnectStartOut)
+def start_stripe_connect_onboarding(
+    request: Request,
+    db: Session = Depends(get_db),
+    instructor: models.Instructor = Depends(get_current_instructor),
+):
+    if not stripe_connect.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Stripe isn't configured on this server yet.")
+    if not instructor.stripe_account_id:
+        instructor.stripe_account_id = stripe_connect.create_connect_account(instructor.email)
+        db.commit()
+    # Both point back to the same place — onboarding-start is idempotent
+    # (reuses the existing account id, just issues a fresh link), so a
+    # refreshed/expired link and a normal return both just need to land
+    # the instructor back on their Profile screen to try again or see
+    # their new status.
+    return_url = f"{str(request.base_url).rstrip('/')}/?stripe_connect=return"
+    onboarding_url = stripe_connect.create_onboarding_link(instructor.stripe_account_id, return_url, return_url)
+    return schemas.StripeConnectStartOut(onboarding_url=onboarding_url)
