@@ -64,14 +64,7 @@ class Instructor(Base):
     suspension_reason = Column(Text, nullable=True)
 
     clients = relationship("Client", back_populates="instructor", cascade="all, delete-orphan")
-    requested_sessions = relationship("SessionListing", back_populates="requested_by")
-    # foreign_keys= is required on both of these now that Booking/LessonRequest
-    # each have a *second* FK to instructors (preferred_instructor_id, for
-    # "Book Again" rebooking) — without it SQLAlchemy can't tell which FK
-    # this relationship should join on.
-    matched_bookings = relationship("Booking", back_populates="instructor", foreign_keys="Booking.instructor_id")
     availability_blocks = relationship("AvailabilityBlock", back_populates="instructor", cascade="all, delete-orphan")
-    matched_lesson_requests = relationship("LessonRequest", back_populates="instructor", foreign_keys="LessonRequest.instructor_id")
     reviews_received = relationship("Review", back_populates="instructor", cascade="all, delete-orphan")
 
     @property
@@ -238,7 +231,7 @@ class SessionListing(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     requested_by_id = Column(Integer, ForeignKey("instructors.id"), nullable=True)
-    requested_by = relationship("Instructor", back_populates="requested_sessions")
+    requested_by = relationship("Instructor")
 
     @property
     def city(self):
@@ -347,7 +340,10 @@ class Booking(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     customer = relationship("Customer", back_populates="bookings")
-    instructor = relationship("Instructor", back_populates="matched_bookings", foreign_keys=[instructor_id])
+    # foreign_keys= is required here since Booking has a *second* FK to
+    # instructors (preferred_instructor_id, for "Book Again" rebooking) —
+    # without it SQLAlchemy can't tell which FK this relationship should join on.
+    instructor = relationship("Instructor", foreign_keys=[instructor_id])
 
 
 class AvailabilityBlock(Base):
@@ -456,7 +452,8 @@ class LessonRequest(Base):
     occurrence_date = Column(String, nullable=True)
 
     customer = relationship("Customer", back_populates="lesson_requests")
-    instructor = relationship("Instructor", back_populates="matched_lesson_requests", foreign_keys=[instructor_id])
+    # foreign_keys= needed here too — see Booking.instructor's identical comment above.
+    instructor = relationship("Instructor", foreign_keys=[instructor_id])
     # The set of candidate windows submitted with this request — see
     # LessonRequestAvailabilityWindow. Ordered earliest-first so "first
     # window that has room" (matching.has_overlap_any) means "earliest
