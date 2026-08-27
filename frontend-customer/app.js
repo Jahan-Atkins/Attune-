@@ -375,14 +375,31 @@ function selectAvailDuration(minutes) {
   document.querySelectorAll('#avail-duration-picker .window-btn').forEach(b => b.classList.toggle('selected', Number(b.dataset.duration) === minutes));
 }
 
+// Toggles `value` in `set`, then repaints every button matching `selector`
+// based on membership, keyed off its `data-{datasetAttr}`.
+function toggleInSet(set, value, selector, datasetAttr) {
+  if (set.has(value)) set.delete(value); else set.add(value);
+  document.querySelectorAll(selector).forEach(b => b.classList.toggle('selected', set.has(Number(b.dataset[datasetAttr]))));
+}
+
 function toggleAvailDay(day) {
-  if (selectedAvailDays.has(day)) selectedAvailDays.delete(day); else selectedAvailDays.add(day);
-  document.querySelectorAll('#avail-day-picker .day-btn').forEach(b => b.classList.toggle('selected', selectedAvailDays.has(Number(b.dataset.day))));
+  toggleInSet(selectedAvailDays, day, '#avail-day-picker .day-btn', 'day');
 }
 
 function toggleAvailWindow(index) {
-  if (selectedAvailWindowIndices.has(index)) selectedAvailWindowIndices.delete(index); else selectedAvailWindowIndices.add(index);
-  document.querySelectorAll('#avail-window-picker .window-btn').forEach((b, i) => b.classList.toggle('selected', selectedAvailWindowIndices.has(i)));
+  toggleInSet(selectedAvailWindowIndices, index, '#avail-window-picker .window-btn', 'window');
+}
+
+// Cross product of every selected day with every selected window index.
+function buildWindowsPayload(days, windowIndices) {
+  const windows = [];
+  for (const day of days) {
+    for (const windowIndex of windowIndices) {
+      const w = TIME_WINDOWS[windowIndex];
+      windows.push({ day_of_week: day, start_time: w.start, end_time: w.end });
+    }
+  }
+  return windows;
 }
 
 function submitAvailabilitySelection() {
@@ -403,13 +420,7 @@ function submitAvailabilitySelection() {
     errorEl.style.display = 'block';
     return;
   }
-  selectedWindows = [];
-  for (const day of selectedAvailDays) {
-    for (const windowIndex of selectedAvailWindowIndices) {
-      const w = TIME_WINDOWS[windowIndex];
-      selectedWindows.push({ day_of_week: day, start_time: w.start, end_time: w.end });
-    }
-  }
+  selectedWindows = buildWindowsPayload(selectedAvailDays, selectedAvailWindowIndices);
   const lessonsPerWeekRaw = document.getElementById('avail-lessons-per-week').value;
   selectedLessonsPerWeek = lessonsPerWeekRaw ? Number(lessonsPerWeekRaw) : null;
 
@@ -698,15 +709,11 @@ let scheduleNextSelectedDays = {};
 let scheduleNextSelectedWindows = {};
 
 function toggleScheduleNextDay(key, day) {
-  const set = scheduleNextSelectedDays[key];
-  if (set.has(day)) set.delete(day); else set.add(day);
-  document.querySelectorAll(`#snext-day-picker-${key} .day-btn`).forEach(b => b.classList.toggle('selected', set.has(Number(b.dataset.day))));
+  toggleInSet(scheduleNextSelectedDays[key], day, `#snext-day-picker-${key} .day-btn`, 'day');
 }
 
 function toggleScheduleNextWindow(key, index) {
-  const set = scheduleNextSelectedWindows[key];
-  if (set.has(index)) set.delete(index); else set.add(index);
-  document.querySelectorAll(`#snext-window-picker-${key} .window-btn`).forEach((b, i) => b.classList.toggle('selected', set.has(i)));
+  toggleInSet(scheduleNextSelectedWindows[key], index, `#snext-window-picker-${key} .window-btn`, 'window');
 }
 
 async function submitScheduleNext(key, rootId) {
@@ -722,14 +729,7 @@ async function submitScheduleNext(key, rootId) {
       errorEl.style.display = 'block';
       return;
     }
-    const windowsPayload = [];
-    for (const day of days) {
-      for (const windowIndex of windows) {
-        const w = TIME_WINDOWS[windowIndex];
-        windowsPayload.push({ day_of_week: day, start_time: w.start, end_time: w.end });
-      }
-    }
-    payload.availability_windows = windowsPayload;
+    payload.availability_windows = buildWindowsPayload(days, windows);
   }
   try {
     await apiFetch(`/api/customer/lesson-requests/${rootId}/schedule-next`, { method: 'POST', body: JSON.stringify(payload) });
@@ -862,32 +862,26 @@ function recurringCardHTML(series) {
     </div>`;
 }
 
-async function pauseSeries(id) {
+async function seriesAction(id, path, method, errMsg) {
   try {
-    await apiFetch(`/api/customer/recurring-series/${id}/pause`, { method: 'PUT' });
+    await apiFetch(`/api/customer/recurring-series/${id}${path}`, { method });
     await loadRecurringSeries();
   } catch (err) {
-    alert(err.message || 'Could not pause this booking.');
+    alert(err.message || errMsg);
   }
 }
 
+async function pauseSeries(id) {
+  await seriesAction(id, '/pause', 'PUT', 'Could not pause this booking.');
+}
+
 async function resumeSeries(id) {
-  try {
-    await apiFetch(`/api/customer/recurring-series/${id}/resume`, { method: 'PUT' });
-    await loadRecurringSeries();
-  } catch (err) {
-    alert(err.message || 'Could not resume this booking.');
-  }
+  await seriesAction(id, '/resume', 'PUT', 'Could not resume this booking.');
 }
 
 async function cancelSeries(id) {
   if (!confirm('Cancel this standing weekly booking? Already-scheduled upcoming lessons stay on your calendar, only future ones stop being created.')) return;
-  try {
-    await apiFetch(`/api/customer/recurring-series/${id}`, { method: 'DELETE' });
-    await loadRecurringSeries();
-  } catch (err) {
-    alert(err.message || 'Could not cancel this booking.');
-  }
+  await seriesAction(id, '', 'DELETE', 'Could not cancel this booking.');
 }
 
 /* =========================================================
@@ -988,7 +982,6 @@ function renderMatch(result, justBooked) {
 
   const ctaBtn = document.getElementById('match-cta-btn');
   ctaBtn.textContent = isLessonRequest ? 'Schedule Another Lesson' : 'Book Another Package';
-  ctaBtn.onclick = () => goToScreen('specialty');
 
   const pendingEl = document.getElementById('match-pending');
   const unmatchedEl = document.getElementById('match-unmatched');

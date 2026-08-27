@@ -59,7 +59,7 @@ p{margin:0;}
 .step-title{text-align:center; font-size:28px; font-weight:600; max-width:640px; margin:18px auto 30px;}
 
 .field-label{display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin:14px 0 6px;}
-.field-input, .field-select, .field-textarea{width:100%; border:1.4px solid #e9e2d5; border-radius:12px; padding:13px 14px; font-family:'Work Sans',sans-serif; font-size:15px; color:var(--ink); background:#fff;}
+.field-input, .field-textarea{width:100%; border:1.4px solid #e9e2d5; border-radius:12px; padding:13px 14px; font-family:'Work Sans',sans-serif; font-size:15px; color:var(--ink); background:#fff;}
 .field-textarea{resize:vertical; min-height:70px;}
 .field-row{display:flex; gap:10px;}
 .field-row > div{flex:1;}
