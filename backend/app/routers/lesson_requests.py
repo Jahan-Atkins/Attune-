@@ -21,6 +21,7 @@ broadcast/confirm lifecycle (session_number=1, the "root"). Sessions
 below — no re-broadcast, no repayment, since the instructor is already
 fixed once the root is matched.
 """
+import calendar
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -39,7 +40,6 @@ from .recurring_series import ensure_upcoming_occurrences
 router = APIRouter(prefix="/api/customer/lesson-requests", tags=["lesson-requests"])
 
 VALID_SPECIALTIES = models.ALL_SPECIALTIES
-DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 # Discounted per-minute rate for longer lessons — a 90-minute lesson
 # costs less than 3x a 30-minute one, rewarding customers who book longer.
@@ -77,8 +77,6 @@ def _validate_windows(windows: List) -> None:
     if not windows:
         raise HTTPException(status_code=400, detail="Submit at least one availability window.")
     for w in windows:
-        if not (0 <= w.day_of_week <= 6):
-            raise HTTPException(status_code=400, detail="day_of_week must be 0-6 (Monday-Sunday).")
         if w.start_time >= w.end_time:
             raise HTTPException(status_code=400, detail="start_time must be before end_time in every window.")
 
@@ -207,7 +205,7 @@ def create_lesson_request(
 
 
 def _notify_session_scheduled(customer: models.Customer, instructor: models.Instructor, session: models.LessonRequest) -> None:
-    when = f"{DAY_NAMES[session.requested_day]}, {session.matched_start_time}–{session.matched_end_time}"
+    when = f"{calendar.day_name[session.requested_day]}, {session.matched_start_time}–{session.matched_end_time}"
     body = f"Session {session.session_number} of {session.sessions_total} is scheduled for {when}."
     if customer.email_notifications:
         send_email(to=customer.email, subject="Next session scheduled", body=body)
@@ -288,7 +286,7 @@ def schedule_next_session(
         .first()
     )
     if client:
-        client.next_session = f"{DAY_NAMES[day]}, {matched_start}"
+        client.next_session = f"{calendar.day_name[day]}, {matched_start}"
 
     db.commit()
     db.refresh(session)

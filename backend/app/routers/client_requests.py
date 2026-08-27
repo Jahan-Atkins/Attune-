@@ -16,6 +16,7 @@ real Client row is created for the confirming instructor. Both create
 routes (bookings.py, lesson_requests.py) deliberately do none of that
 anymore.
 """
+import calendar
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,8 +30,6 @@ from ..security import get_current_instructor
 from .blocks import is_blocked
 
 router = APIRouter(prefix="/api/client-requests", tags=["client-requests"])
-
-DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 def _my_specialties(instructor: models.Instructor) -> List[str]:
@@ -156,9 +155,13 @@ def list_client_requests(
     return results
 
 
+def _initials(name: str) -> str:
+    return "".join(word[0].upper() for word in name.split()[:2]) or "CU"
+
+
 def _create_client_from_booking(db: Session, instructor: models.Instructor, booking: models.Booking) -> None:
     customer = booking.customer
-    initials = "".join(word[0].upper() for word in customer.name.split()[:2]) or "CU"
+    initials = _initials(customer.name)
     db.add(models.Client(
         instructor_id=instructor.id,
         name=customer.name,
@@ -178,8 +181,8 @@ def _create_client_from_booking(db: Session, instructor: models.Instructor, book
 
 def _create_client_from_lesson_request(db: Session, instructor: models.Instructor, lesson_request: models.LessonRequest) -> None:
     customer = lesson_request.customer
-    initials = "".join(word[0].upper() for word in customer.name.split()[:2]) or "CU"
-    next_session = f"{DAY_NAMES[lesson_request.requested_day]}, {lesson_request.matched_start_time}"
+    initials = _initials(customer.name)
+    next_session = f"{calendar.day_name[lesson_request.requested_day]}, {lesson_request.matched_start_time}"
     db.add(models.Client(
         instructor_id=instructor.id,
         name=customer.name,

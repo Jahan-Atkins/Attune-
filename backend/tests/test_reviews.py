@@ -96,7 +96,7 @@ def test_reject_review_with_both_ids(client, customer_auth_headers):
 def test_reject_invalid_rating(client, customer_auth_headers):
     _, booking_id = _make_matched_booking(client, customer_auth_headers, email="bad_rating@example.com")
     res = client.post("/api/customer/reviews", json={"booking_id": booking_id, "rating": 7}, headers=customer_auth_headers)
-    assert res.status_code == 400
+    assert res.status_code == 422
 
 
 def test_my_reviews_requires_instructor_auth(client):
@@ -188,7 +188,7 @@ def test_edit_review_rejects_out_of_range_rating(client, customer_auth_headers):
     review_id = _create_review(client, customer_auth_headers, booking_id)
 
     res = client.put(f"/api/customer/reviews/{review_id}", json={"rating": 0}, headers=customer_auth_headers)
-    assert res.status_code == 400
+    assert res.status_code == 422
 
 
 def test_cannot_edit_another_customers_review(client, customer_auth_headers):

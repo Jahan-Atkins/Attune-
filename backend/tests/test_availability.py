@@ -25,7 +25,7 @@ def test_reject_invalid_time_range(client, auth_headers):
 
 def test_reject_invalid_day_of_week(client, auth_headers):
     res = client.post("/api/availability", json={"day_of_week": 9, "start_time": "09:00", "end_time": "11:00"}, headers=auth_headers)
-    assert res.status_code == 400
+    assert res.status_code == 422
 
 
 def test_reject_overlapping_block_same_day(client, auth_headers):

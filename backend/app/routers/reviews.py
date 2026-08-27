@@ -36,8 +36,6 @@ def create_review(
         raise HTTPException(status_code=400, detail="A review must reference a booking or lesson request.")
     if payload.booking_id is not None and payload.lesson_request_id is not None:
         raise HTTPException(status_code=400, detail="A review can only reference one booking or lesson request, not both.")
-    if not (1 <= payload.rating <= 5):
-        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5.")
 
     if payload.booking_id is not None:
         booking = (
@@ -140,8 +138,6 @@ def update_review(
         raise HTTPException(status_code=404, detail="Review not found.")
 
     if payload.rating is not None:
-        if not (1 <= payload.rating <= 5):
-            raise HTTPException(status_code=400, detail="Rating must be between 1 and 5.")
         review.rating = payload.rating
     if payload.comment is not None:
         review.comment = payload.comment

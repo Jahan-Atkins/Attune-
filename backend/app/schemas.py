@@ -269,7 +269,7 @@ class BookingOut(BaseModel):
 # ---- Availability blocks (instructor weekly schedule) ----
 
 class AvailabilityBlockBase(BaseModel):
-    day_of_week: int  # 0=Monday ... 6=Sunday
+    day_of_week: int = Field(ge=0, le=6)  # 0=Monday ... 6=Sunday
     start_time: str  # "HH:MM", 24-hour
     end_time: str  # "HH:MM", 24-hour
 
@@ -382,12 +382,12 @@ class ClientRequestConfirmedOut(ClientRequestOut):
 class ReviewCreate(BaseModel):
     booking_id: Optional[int] = None
     lesson_request_id: Optional[int] = None
-    rating: int  # 1-5
+    rating: int = Field(ge=1, le=5)
     comment: Optional[str] = None
 
 
 class ReviewUpdate(BaseModel):
-    rating: Optional[int] = None  # 1-5, same validation as ReviewCreate
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
     comment: Optional[str] = None
 
 
@@ -431,14 +431,6 @@ class RecurringSeriesOut(BaseModel):
 # ---- Admin ----
 # A third role, alongside Instructor/Customer — see models.Admin and
 # security.get_current_admin. No AdminSignupRequest anywhere on purpose.
-
-class AdminLoginRequest(BaseModel):
-    """Not used directly — admin login goes through the same
-    OAuth2PasswordRequestForm as the other two account types (see
-    routers/admin_auth.py). Kept only as documentation of the shape."""
-    email: EmailStr
-    password: str
-
 
 class SuspendRequest(BaseModel):
     reason: Optional[str] = None

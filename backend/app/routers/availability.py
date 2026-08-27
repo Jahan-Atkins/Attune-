@@ -33,8 +33,6 @@ def create_availability(
     db: Session = Depends(get_db),
     instructor: models.Instructor = Depends(get_current_instructor),
 ):
-    if not (0 <= payload.day_of_week <= 6):
-        raise HTTPException(status_code=400, detail="day_of_week must be 0-6 (Monday-Sunday).")
     if payload.start_time >= payload.end_time:
         raise HTTPException(status_code=400, detail="start_time must be before end_time.")
 

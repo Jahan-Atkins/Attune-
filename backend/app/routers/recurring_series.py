@@ -13,6 +13,7 @@ whatever LessonRequest rows are missing for the next few weeks. A series
 that nobody looks at for months just falls behind and catches up the
 next time either side checks — that's an accepted tradeoff, not a bug.
 """
+import calendar
 from datetime import date, datetime, timedelta, timezone
 from typing import List
 
@@ -78,7 +79,7 @@ def _notify_series(db: Session, series: models.RecurringSeries, event: str) -> N
     series left off, not really a "new" event worth a separate email."""
     customer = db.query(models.Customer).filter(models.Customer.id == series.customer_id).first()
     instructor = db.query(models.Instructor).filter(models.Instructor.id == series.instructor_id).first()
-    day_label = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][series.day_of_week]
+    day_label = calendar.day_name[series.day_of_week]
     detail = f"Every {day_label}, {series.start_time}–{series.end_time}"
     if customer.email_notifications:
         send_email(
