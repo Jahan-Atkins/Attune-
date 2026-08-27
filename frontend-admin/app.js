@@ -32,8 +32,6 @@ function escapeHtml(str) {
    ========================================================= */
 const TOKEN_KEY = 'attune_admin_token';
 const getToken = () => localStorage.getItem(TOKEN_KEY);
-const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
-const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
 async function handleLogin(evt) {
   evt.preventDefault();
@@ -53,7 +51,7 @@ async function handleLogin(evt) {
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Incorrect email or password');
     const { access_token } = await res.json();
-    setToken(access_token);
+    localStorage.setItem(TOKEN_KEY, access_token);
     updateNav();
     openDashboard();
   } catch (err) {
@@ -63,7 +61,7 @@ async function handleLogin(evt) {
 }
 
 function logout() {
-  clearToken();
+  localStorage.removeItem(TOKEN_KEY);
   updateNav();
   goToScreen('login');
 }
@@ -93,6 +91,29 @@ async function apiFetch(path, options = {}) {
   }
   if (res.status === 204) return null;
   return res.json();
+}
+
+/* =========================================================
+   SHARED LIST + ACTION HELPERS
+   ========================================================= */
+async function renderList(el, path, rowFn, emptyText) {
+  el.innerHTML = '<p class="empty-copy">Loading…</p>';
+  try {
+    const items = await apiFetch(path);
+    el.innerHTML = items.length ? items.map(rowFn).join('') : `<p class="empty-copy">${emptyText}</p>`;
+  } catch (err) {
+    el.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function runAction(url, method, reload, errMsg, body, alwaysReload) {
+  try {
+    await apiFetch(url, body !== undefined ? { method, body: JSON.stringify(body) } : { method });
+    if (!alwaysReload) await reload();
+  } catch (err) {
+    alert(err.message || errMsg);
+  }
+  if (alwaysReload) await reload();
 }
 
 /* =========================================================
@@ -143,21 +164,12 @@ async function openInstructors() {
 }
 
 async function loadInstructors() {
-  const listEl = document.getElementById('instructors-list');
   const active = document.getElementById('instructor-filter-active').value;
   const suspended = document.getElementById('instructor-filter-suspended').value;
   const params = new URLSearchParams();
   if (active) params.set('active', active);
   if (suspended) params.set('suspended', suspended);
-  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
-  try {
-    const instructors = await apiFetch(`/api/admin/instructors?${params.toString()}`);
-    listEl.innerHTML = instructors.length
-      ? instructors.map(instructorRowHTML).join('')
-      : '<p class="empty-copy">No instructors match these filters.</p>';
-  } catch (err) {
-    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
-  }
+  await renderList(document.getElementById('instructors-list'), `/api/admin/instructors?${params.toString()}`, instructorRowHTML, 'No instructors match these filters.');
 }
 
 function instructorRowHTML(i) {
@@ -167,53 +179,26 @@ function instructorRowHTML(i) {
   const suspendedPill = i.suspended ? '<span class="status-pill status-suspended">Suspended</span>' : '';
   const rating = i.review_count > 0 ? `★ ${i.average_rating.toFixed(1)} (${i.review_count})` : 'No reviews yet';
   return `
-    <div>
-      <div class="admin-row">
-        <div class="admin-row-main">
-          <p class="admin-row-title">${escapeHtml(i.name)} ${activePill} ${suspendedPill}</p>
-          <p class="admin-row-meta">${escapeHtml(i.email)} · ${escapeHtml(i.phone)}<br>${escapeHtml(i.specialty)} · ${escapeHtml(i.city || 'no city set')} · ${escapeHtml(rating)}${i.suspension_reason ? `<br>Reason: ${escapeHtml(i.suspension_reason)}` : ''}</p>
-        </div>
-        <div class="admin-row-actions">
-          ${i.suspended
-            ? `<button class="btn btn-outline btn-sm" onclick="unsuspendInstructor(${i.id})">Unsuspend</button>`
-            : `<button class="btn btn-danger btn-sm" onclick="toggleSuspendForm('instructors', ${i.id})">Suspend</button>`}
-        </div>
+    <div class="admin-row">
+      <div class="admin-row-main">
+        <p class="admin-row-title">${escapeHtml(i.name)} ${activePill} ${suspendedPill}</p>
+        <p class="admin-row-meta">${escapeHtml(i.email)} · ${escapeHtml(i.phone)}<br>${escapeHtml(i.specialty)} · ${escapeHtml(i.city || 'no city set')} · ${escapeHtml(rating)}${i.suspension_reason ? `<br>Reason: ${escapeHtml(i.suspension_reason)}` : ''}</p>
       </div>
-      ${suspendFormHTML('instructors', i.id)}
+      <div class="admin-row-actions">
+        ${i.suspended
+          ? `<button class="btn btn-outline btn-sm" onclick="unsuspendInstructor(${i.id})">Unsuspend</button>`
+          : `<button class="btn btn-danger btn-sm" onclick="confirmSuspend('instructors', ${i.id})">Suspend</button>`}
+      </div>
     </div>`;
-}
-
-function suspendFormHTML(kind, id) {
-  return `
-    <div class="suspend-inline-form" id="suspend-form-${kind}-${id}" style="display:none;">
-      <input class="field-input" id="suspend-reason-${kind}-${id}" placeholder="Reason (optional, shown to them)">
-      <button class="btn btn-danger btn-sm" onclick="confirmSuspend('${kind}', ${id})">Confirm Suspend</button>
-      <button class="btn btn-outline btn-sm" onclick="toggleSuspendForm('${kind}', ${id})">Cancel</button>
-    </div>`;
-}
-
-function toggleSuspendForm(kind, id) {
-  const el = document.getElementById(`suspend-form-${kind}-${id}`);
-  el.style.display = el.style.display === 'flex' ? 'none' : 'flex';
 }
 
 async function confirmSuspend(kind, id) {
-  const reason = document.getElementById(`suspend-reason-${kind}-${id}`).value.trim() || null;
-  try {
-    await apiFetch(`/api/admin/${kind}/${id}/suspend`, { method: 'PUT', body: JSON.stringify({ reason }) });
-    if (kind === 'instructors') await loadInstructors(); else await loadCustomers();
-  } catch (err) {
-    alert(err.message || 'Could not suspend.');
-  }
+  const reason = prompt('Reason (optional, shown to them):') || null;
+  await runAction(`/api/admin/${kind}/${id}/suspend`, 'PUT', kind === 'instructors' ? loadInstructors : loadCustomers, 'Could not suspend.', { reason });
 }
 
 async function unsuspendInstructor(id) {
-  try {
-    await apiFetch(`/api/admin/instructors/${id}/unsuspend`, { method: 'PUT' });
-    await loadInstructors();
-  } catch (err) {
-    alert(err.message || 'Could not unsuspend this instructor.');
-  }
+  await runAction(`/api/admin/instructors/${id}/unsuspend`, 'PUT', loadInstructors, 'Could not unsuspend this instructor.');
 }
 
 /* =========================================================
@@ -225,47 +210,30 @@ async function openCustomers() {
 }
 
 async function loadCustomers() {
-  const listEl = document.getElementById('customers-list');
   const suspended = document.getElementById('customer-filter-suspended').value;
   const params = new URLSearchParams();
   if (suspended) params.set('suspended', suspended);
-  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
-  try {
-    const customers = await apiFetch(`/api/admin/customers?${params.toString()}`);
-    listEl.innerHTML = customers.length
-      ? customers.map(customerRowHTML).join('')
-      : '<p class="empty-copy">No customers match these filters.</p>';
-  } catch (err) {
-    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
-  }
+  await renderList(document.getElementById('customers-list'), `/api/admin/customers?${params.toString()}`, customerRowHTML, 'No customers match these filters.');
 }
 
 function customerRowHTML(c) {
   const suspendedPill = c.suspended ? '<span class="status-pill status-suspended">Suspended</span>' : '';
   return `
-    <div>
-      <div class="admin-row">
-        <div class="admin-row-main">
-          <p class="admin-row-title">${escapeHtml(c.name)} ${suspendedPill}</p>
-          <p class="admin-row-meta">${escapeHtml(c.email)} · ${escapeHtml(c.phone)}<br>${escapeHtml(c.city || 'no city set')}${c.suspension_reason ? `<br>Reason: ${escapeHtml(c.suspension_reason)}` : ''}</p>
-        </div>
-        <div class="admin-row-actions">
-          ${c.suspended
-            ? `<button class="btn btn-outline btn-sm" onclick="unsuspendCustomer(${c.id})">Unsuspend</button>`
-            : `<button class="btn btn-danger btn-sm" onclick="toggleSuspendForm('customers', ${c.id})">Suspend</button>`}
-        </div>
+    <div class="admin-row">
+      <div class="admin-row-main">
+        <p class="admin-row-title">${escapeHtml(c.name)} ${suspendedPill}</p>
+        <p class="admin-row-meta">${escapeHtml(c.email)} · ${escapeHtml(c.phone)}<br>${escapeHtml(c.city || 'no city set')}${c.suspension_reason ? `<br>Reason: ${escapeHtml(c.suspension_reason)}` : ''}</p>
       </div>
-      ${suspendFormHTML('customers', c.id)}
+      <div class="admin-row-actions">
+        ${c.suspended
+          ? `<button class="btn btn-outline btn-sm" onclick="unsuspendCustomer(${c.id})">Unsuspend</button>`
+          : `<button class="btn btn-danger btn-sm" onclick="confirmSuspend('customers', ${c.id})">Suspend</button>`}
+      </div>
     </div>`;
 }
 
 async function unsuspendCustomer(id) {
-  try {
-    await apiFetch(`/api/admin/customers/${id}/unsuspend`, { method: 'PUT' });
-    await loadCustomers();
-  } catch (err) {
-    alert(err.message || 'Could not unsuspend this customer.');
-  }
+  await runAction(`/api/admin/customers/${id}/unsuspend`, 'PUT', loadCustomers, 'Could not unsuspend this customer.');
 }
 
 /* =========================================================
@@ -286,20 +254,11 @@ function setRequestsTab(tab) {
 }
 
 async function loadRequests() {
-  const listEl = document.getElementById('requests-list');
   const status = document.getElementById('requests-filter-status').value;
   const params = new URLSearchParams();
   if (status) params.set('status', status);
-  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
   const path = requestsTab === 'package' ? '/api/admin/bookings' : '/api/admin/lesson-requests';
-  try {
-    const items = await apiFetch(`${path}?${params.toString()}`);
-    listEl.innerHTML = items.length
-      ? items.map(requestRowHTML).join('')
-      : '<p class="empty-copy">Nothing matches these filters.</p>';
-  } catch (err) {
-    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
-  }
+  await renderList(document.getElementById('requests-list'), `${path}?${params.toString()}`, requestRowHTML, 'Nothing matches these filters.');
 }
 
 function requestRowHTML(r) {
@@ -332,22 +291,12 @@ const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 async function forceCancelBooking(id) {
   if (!confirm('Force-cancel this package request? This cannot be undone from here.')) return;
-  try {
-    await apiFetch(`/api/admin/bookings/${id}/force-cancel`, { method: 'PUT' });
-    await loadRequests();
-  } catch (err) {
-    alert(err.message || 'Could not cancel this request.');
-  }
+  await runAction(`/api/admin/bookings/${id}/force-cancel`, 'PUT', loadRequests, 'Could not cancel this request.');
 }
 
 async function forceCancelLessonRequest(id) {
   if (!confirm('Force-cancel this scheduled lesson? This cannot be undone from here.')) return;
-  try {
-    await apiFetch(`/api/admin/lesson-requests/${id}/force-cancel`, { method: 'PUT' });
-    await loadRequests();
-  } catch (err) {
-    alert(err.message || 'Could not cancel this request.');
-  }
+  await runAction(`/api/admin/lesson-requests/${id}/force-cancel`, 'PUT', loadRequests, 'Could not cancel this request.');
 }
 
 /* =========================================================
@@ -359,16 +308,7 @@ async function openDeletionRequests() {
 }
 
 async function loadDeletionRequests() {
-  const listEl = document.getElementById('deletions-list');
-  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
-  try {
-    const requests = await apiFetch('/api/admin/client-deletion-requests');
-    listEl.innerHTML = requests.length
-      ? requests.map(deletionRequestRowHTML).join('')
-      : '<p class="empty-copy">No pending deletion requests.</p>';
-  } catch (err) {
-    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
-  }
+  await renderList(document.getElementById('deletions-list'), '/api/admin/client-deletion-requests', deletionRequestRowHTML, 'No pending deletion requests.');
 }
 
 function deletionRequestRowHTML(r) {
@@ -388,21 +328,11 @@ function deletionRequestRowHTML(r) {
 
 async function approveDeletion(id) {
   if (!confirm('Approve this deletion? The client (and their lesson history) will be permanently removed.')) return;
-  try {
-    await apiFetch(`/api/admin/client-deletion-requests/${id}/approve`, { method: 'PUT' });
-    await loadDeletionRequests();
-  } catch (err) {
-    alert(err.message || 'Could not approve this request.');
-  }
+  await runAction(`/api/admin/client-deletion-requests/${id}/approve`, 'PUT', loadDeletionRequests, 'Could not approve this request.');
 }
 
 async function denyDeletion(id) {
-  try {
-    await apiFetch(`/api/admin/client-deletion-requests/${id}/deny`, { method: 'PUT' });
-    await loadDeletionRequests();
-  } catch (err) {
-    alert(err.message || 'Could not deny this request.');
-  }
+  await runAction(`/api/admin/client-deletion-requests/${id}/deny`, 'PUT', loadDeletionRequests, 'Could not deny this request.');
 }
 
 /* =========================================================
@@ -414,18 +344,9 @@ async function openSpecialtyVerifications() {
 }
 
 async function loadSpecialtyVerifications() {
-  const listEl = document.getElementById('specialty-verifications-list');
   const status = document.getElementById('specialty-verifications-filter-status').value;
   const query = status ? `?status=${status}` : '';
-  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
-  try {
-    const requests = await apiFetch(`/api/admin/specialty-verifications${query}`);
-    listEl.innerHTML = requests.length
-      ? requests.map(specialtyVerificationRowHTML).join('')
-      : '<p class="empty-copy">No requests match this filter.</p>';
-  } catch (err) {
-    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
-  }
+  await renderList(document.getElementById('specialty-verifications-list'), `/api/admin/specialty-verifications${query}`, specialtyVerificationRowHTML, 'No requests match this filter.');
 }
 
 function specialtyVerificationRowHTML(r) {
@@ -448,22 +369,12 @@ function specialtyVerificationRowHTML(r) {
 }
 
 async function approveSpecialtyVerification(id) {
-  try {
-    await apiFetch(`/api/admin/specialty-verifications/${id}/approve`, { method: 'PUT' });
-  } catch (err) {
-    alert(err.message || 'Could not approve this request.');
-  }
-  await loadSpecialtyVerifications();
+  await runAction(`/api/admin/specialty-verifications/${id}/approve`, 'PUT', loadSpecialtyVerifications, 'Could not approve this request.', undefined, true);
 }
 
 async function denySpecialtyVerification(id) {
   const admin_note = prompt('Reason (optional, shown to the instructor):') || null;
-  try {
-    await apiFetch(`/api/admin/specialty-verifications/${id}/deny`, { method: 'PUT', body: JSON.stringify({ admin_note }) });
-  } catch (err) {
-    alert(err.message || 'Could not deny this request.');
-  }
-  await loadSpecialtyVerifications();
+  await runAction(`/api/admin/specialty-verifications/${id}/deny`, 'PUT', loadSpecialtyVerifications, 'Could not deny this request.', { admin_note }, true);
 }
 
 /* =========================================================
@@ -478,18 +389,9 @@ async function openReports() {
 }
 
 async function loadReports() {
-  const listEl = document.getElementById('reports-list');
-  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
   const resolved = document.getElementById('reports-filter-resolved').value;
   const query = resolved ? `?resolved=${resolved}` : '';
-  try {
-    const reports = await apiFetch(`/api/admin/reports${query}`);
-    listEl.innerHTML = reports.length
-      ? reports.map(reportRowHTML).join('')
-      : '<p class="empty-copy">No reports match this filter.</p>';
-  } catch (err) {
-    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
-  }
+  await renderList(document.getElementById('reports-list'), `/api/admin/reports${query}`, reportRowHTML, 'No reports match this filter.');
 }
 
 function reportRowHTML(r) {
@@ -510,12 +412,7 @@ function reportRowHTML(r) {
 }
 
 async function resolveReport(id) {
-  try {
-    await apiFetch(`/api/admin/reports/${id}/resolve`, { method: 'PUT' });
-    await loadReports();
-  } catch (err) {
-    alert(err.message || 'Could not resolve this report.');
-  }
+  await runAction(`/api/admin/reports/${id}/resolve`, 'PUT', loadReports, 'Could not resolve this report.');
 }
 
 /* =========================================================
@@ -528,14 +425,7 @@ async function openFaqs() {
 }
 
 async function loadFaqs() {
-  const listEl = document.getElementById('faqs-list');
-  listEl.innerHTML = '<p class="empty-copy">Loading…</p>';
-  try {
-    const faqs = await apiFetch('/api/admin/faqs');
-    listEl.innerHTML = faqs.length ? faqs.map(faqRowHTML).join('') : '<p class="empty-copy">No FAQs yet.</p>';
-  } catch (err) {
-    listEl.innerHTML = `<p class="empty-copy">${escapeHtml(err.message)}</p>`;
-  }
+  await renderList(document.getElementById('faqs-list'), '/api/admin/faqs', faqRowHTML, 'No FAQs yet.');
 }
 
 function faqRowHTML(f) {
@@ -600,12 +490,7 @@ async function submitFaqForm(id) {
 
 async function deleteFaq(id) {
   if (!confirm('Delete this FAQ?')) return;
-  try {
-    await apiFetch(`/api/admin/faqs/${id}`, { method: 'DELETE' });
-    await loadFaqs();
-  } catch (err) {
-    alert(err.message || 'Could not delete this FAQ.');
-  }
+  await runAction(`/api/admin/faqs/${id}`, 'DELETE', loadFaqs, 'Could not delete this FAQ.');
 }
 
 /* =========================================================
